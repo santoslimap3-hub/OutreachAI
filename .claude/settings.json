@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(node scraper.js)",
-      "Bash(ruby -rjson:*)"
+      "Bash(ruby -rjson:*)",
+      "Bash(npm install:*)"
     ]
   }
 }

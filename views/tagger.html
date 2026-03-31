@@ -512,17 +512,20 @@
 
 <body>
 
-    <!-- LOAD MODAL -->
+    <!-- LOAD MODAL (shown only as fallback) -->
     <div class="load-modal" id="loadModal">
         <div class="load-box">
             <div style="font-size:48px;margin-bottom:16px">🏷️</div>
             <h1>Response Tagger</h1>
-            <p>Load your scraped <code>skool_data.json</code> to start tagging Scott's responses with tone, intent, and sales stage.</p>
-            <div class="dropzone" id="dropzone">
-                <span>Drop <strong>skool_data.json</strong> here or click to browse</span>
+            <p>Loading posts from server...</p>
+            <div id="loadError" style="display:none">
+                <p style="color:#FF6B35">Could not load from server. Drop a file manually:</p>
+                <div class="dropzone" id="dropzone">
+                    <span>Drop <strong>posts_with_scott_reply.json</strong> here or click to browse</span>
+                </div>
+                <div class="or-divider">or</div>
+                <button class="demo-btn" id="demoBtn">Use Demo Data (3 samples)</button>
             </div>
-            <div class="or-divider">or</div>
-            <button class="demo-btn" id="demoBtn">Use Demo Data (3 samples)</button>
         </div>
     </div>
 
@@ -557,9 +560,15 @@
                     <div class="post-body" id="postBody"></div>
                 </div>
 
-                <div class="card scott" id="threadCard">
-                    <div class="card-label scott">Conversation Threads</div>
-                    <div id="threadsContainer"></div>
+                <div class="card" id="contextCard">
+                    <div class="card-label" id="contextLabel">Responding To</div>
+                    <div class="thread-author" id="contextAuthor"></div>
+                    <div class="thread-content" id="contextContent" style="margin-top:4px"></div>
+                </div>
+
+                <div class="card scott" id="scottCard">
+                    <div class="card-label scott">Scott's Reply</div>
+                    <div class="response-text" id="scottContent"></div>
                 </div>
             </div>
 
@@ -701,114 +710,71 @@
             icon: "🎯"
         }, ];
 
-        const DEMO_DATA = [{
-            id: "001",
-            original_post: {
-                author: "Kai Cerar",
-                title: "Congrats on the website!",
-                body: "This is amazing, you guys are really building something special here.",
-                category: "The Hero's Journey",
-                timestamp: "10h"
-            },
-            threads: [{
-                comment: {
-                    author: "Kai Cerar",
-                    content: "WOW Looks fire BROO!!!!",
-                    isTargetMember: false
-                },
-                replies: [{
-                    author: "Scott Northwolf",
-                    content: "@Kai Cerar thanks, brother. Wait until you see the FIRE content we are recording at our brand new villa...",
-                    isTargetMember: true
-                }, {
-                    author: "Kai Cerar",
-                    content: "@Scott Northwolf BROOO LETS FUCKIN GOOOO!!",
-                    isTargetMember: false
-                }, ]
-            }],
-            scott_involved: true,
-            tags: {
-                tone_tags: [],
-                intent: "",
-                sales_stage: ""
-            },
-        }, {
-            id: "002",
-            original_post: {
-                author: "Lea Newkirk",
-                title: "Moving Backward",
-                body: "I feel like I've been making progress for months but this week everything fell apart.",
-                category: "Holistic Self-Improvement",
-                timestamp: "3d"
-            },
-            threads: [{
-                comment: {
-                    author: "Scott Northwolf",
-                    content: "Listen, setbacks aren't the opposite of progress — they ARE part of progress. DM me if you want to talk through what's blocking you 💪",
-                    isTargetMember: true
-                },
-                replies: []
-            }],
-            scott_involved: true,
-            tags: {
-                tone_tags: [],
-                intent: "",
-                sales_stage: ""
-            },
-        }, {
-            id: "003",
-            original_post: {
-                author: "Marcus Chen",
-                title: "How do I start a coaching business?",
-                body: "I have expertise in fitness but zero business knowledge. Any advice?",
-                category: "Business & Monetization",
-                timestamp: "5d"
-            },
-            threads: [{
-                comment: {
-                    author: "Scott Northwolf",
-                    content: "Great question bro. You need ONE clear offer and ONE way to get in front of people. Book a call with my team — link in my bio 🔗",
-                    isTargetMember: true
-                },
-                replies: []
-            }],
-            scott_involved: true,
-            tags: {
-                tone_tags: [],
-                intent: "",
-                sales_stage: ""
-            },
-        }, ];
+        function isScott(author) {
+            return author && author.includes("Northwolf");
+        }
 
         // ─── STATE ───────────────────────────────────────
-        let data = [];
+        let allPosts = [];   // full posts array (written back to server)
+        let entries = [];    // flattened: one entry per Scott reply
         let currentIndex = 0;
+        let serverMode = false;
 
         // ─── DOM ─────────────────────────────────────────
         const $ = id => document.getElementById(id);
 
         // ─── LOAD DATA ───────────────────────────────────
         function loadData(raw) {
-            const interactions = raw.interactions || raw;
-            if (!Array.isArray(interactions)) {
-                alert("Invalid format");
+            const posts = Array.isArray(raw) ? raw : (raw.interactions || []);
+            if (!Array.isArray(posts) || posts.length === 0) {
+                alert("No posts found. Check your data.");
                 return;
             }
 
-            // Filter to only posts where Scott is involved, and add tags object
-            data = interactions
-                .filter(i => i.scott_involved)
-                .map(i => {
-                    if (!i.tags) i.tags = {
-                        tone_tags: [],
-                        intent: "",
-                        sales_stage: ""
-                    };
-                    return i;
-                });
+            allPosts = posts;
+            entries = [];
 
-            if (data.length === 0) {
-                alert("No posts found where Scott is involved. Check your scraper output.");
+            posts.forEach(post => {
+                (post.threads || []).forEach(thread => {
+                    const comment = thread.comment;
+
+                    // Scott wrote the top-level comment → context is the original post
+                    if (isScott(comment.author)) {
+                        if (!comment.tags) comment.tags = { tone_tags: [], intent: "", sales_stage: "" };
+                        entries.push({
+                            post: post,
+                            contextType: "post",
+                            contextAuthor: post.original_post.author,
+                            contextText: (post.original_post.title ? post.original_post.title + "\n\n" : "") + (post.original_post.body || ""),
+                            scottReply: comment
+                        });
+                    }
+
+                    // Check each reply
+                    (thread.replies || []).forEach((reply, ri) => {
+                        if (isScott(reply.author)) {
+                            if (!reply.tags) reply.tags = { tone_tags: [], intent: "", sales_stage: "" };
+                            // Context is the message right before this reply (previous reply, or the comment)
+                            let ctx;
+                            if (ri === 0) {
+                                ctx = comment;
+                            } else {
+                                ctx = thread.replies[ri - 1];
+                            }
+                            entries.push({
+                                post: post,
+                                contextType: "comment",
+                                contextAuthor: ctx.author,
+                                contextText: ctx.content,
+                                scottReply: reply
+                            });
+                        }
+                    });
+                });
+            });
+
+            if (entries.length === 0) {
+                alert("No Scott replies found in the data.");
                 return;
             }
 
@@ -817,6 +783,27 @@
             currentIndex = 0;
             render();
         }
+
+        function saveToServer() {
+            if (!serverMode) return;
+            fetch('/api/posts', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(allPosts)
+            }).catch(() => {});
+        }
+
+        // Auto-load from server on page open
+        fetch('/api/posts')
+            .then(r => r.json())
+            .then(posts => {
+                serverMode = true;
+                loadData(posts);
+            })
+            .catch(() => {
+                $("loadError").style.display = "block";
+                $("loadModal").querySelector("p").style.display = "none";
+            });
 
         function handleFile(file) {
             const reader = new FileReader();
@@ -830,64 +817,55 @@
             reader.readAsText(file);
         }
 
-        // Dropzone
-        const dz = $("dropzone");
-        dz.addEventListener("click", () => {
-            const inp = document.createElement("input");
-            inp.type = "file";
-            inp.accept = ".json";
-            inp.onchange = e => handleFile(e.target.files[0]);
-            inp.click();
-        });
-        dz.addEventListener("dragover", e => {
-            e.preventDefault();
-            dz.classList.add("over");
-        });
-        dz.addEventListener("dragleave", () => dz.classList.remove("over"));
-        dz.addEventListener("drop", e => {
-            e.preventDefault();
-            dz.classList.remove("over");
-            handleFile(e.dataTransfer.files[0]);
-        });
-
-        $("demoBtn").addEventListener("click", () => loadData(DEMO_DATA));
+        // Dropzone (fallback only)
+        setTimeout(() => {
+            const dz = $("dropzone");
+            if (!dz) return;
+            dz.addEventListener("click", () => {
+                const inp = document.createElement("input");
+                inp.type = "file";
+                inp.accept = ".json";
+                inp.onchange = e => handleFile(e.target.files[0]);
+                inp.click();
+            });
+            dz.addEventListener("dragover", e => { e.preventDefault(); dz.classList.add("over"); });
+            dz.addEventListener("dragleave", () => dz.classList.remove("over"));
+            dz.addEventListener("drop", e => { e.preventDefault(); dz.classList.remove("over"); handleFile(e.dataTransfer.files[0]); });
+            $("demoBtn").addEventListener("click", () => loadData([{
+                id: "001",
+                original_post: { author: "Kai Cerar", title: "Congrats on the website!", body: "This is amazing, you guys are really building something special here.", category: "The Hero's Journey", timestamp: "10h" },
+                threads: [{ comment: { author: "Kai Cerar", content: "WOW Looks fire BROO!!!!", isTargetMember: false }, replies: [{ author: "Scott Northwolf", content: "@Kai Cerar thanks, brother. Wait until you see the FIRE content we are recording at our brand new villa...", isTargetMember: true }, { author: "Kai Cerar", content: "@Scott Northwolf BROOO LETS FUCKIN GOOOO!!", isTargetMember: false }, { author: "Scott Northwolf", content: "@Kai Cerar LFG brother!!", isTargetMember: true }] }],
+                scott_involved: true
+            }]));
+        }, 0);
 
         // ─── RENDER ──────────────────────────────────────
         function render() {
-            const item = data[currentIndex];
-            const tags = item.tags;
+            const entry = entries[currentIndex];
+            const post = entry.post;
+            const tags = entry.scottReply.tags;
 
-            // Post info
-            $("postAuthor").textContent = item.original_post.author;
-            $("postCategory").textContent = item.original_post.category || "";
-            $("postCategory").style.display = item.original_post.category ? "inline-block" : "none";
-            $("postTimestamp").textContent = item.original_post.timestamp || "";
-            $("postTitle").textContent = item.original_post.title || "";
-            $("postBody").textContent = item.original_post.body || "";
+            // Original post info
+            $("postAuthor").textContent = post.original_post.author;
+            $("postCategory").textContent = post.original_post.category || "";
+            $("postCategory").style.display = post.original_post.category ? "inline-block" : "none";
+            $("postTimestamp").textContent = post.original_post.timestamp || "";
+            $("postTitle").textContent = post.original_post.title || "";
+            $("postBody").textContent = post.original_post.body || "";
 
-            // Threads
-            const tc = $("threadsContainer");
-            tc.innerHTML = "";
-            (item.threads || []).forEach(thread => {
-                const div = document.createElement("div");
-                div.className = "thread";
+            // Context card — what Scott was responding to
+            if (entry.contextType === "post") {
+                // Scott commented directly on the post, hide separate context card
+                $("contextCard").style.display = "none";
+            } else {
+                $("contextCard").style.display = "block";
+                $("contextLabel").textContent = "Responding To";
+                $("contextAuthor").textContent = entry.contextAuthor;
+                $("contextContent").textContent = entry.contextText;
+            }
 
-                // Top-level comment
-                const commentDiv = document.createElement("div");
-                commentDiv.className = "thread-comment";
-                commentDiv.innerHTML = `<div class="thread-author ${thread.comment.isTargetMember ? 'scott' : ''}">${thread.comment.author}</div><div class="thread-content">${escHtml(thread.comment.content)}</div>`;
-                div.appendChild(commentDiv);
-
-                // Replies
-                (thread.replies || []).forEach(r => {
-                    const replyDiv = document.createElement("div");
-                    replyDiv.className = "thread-reply";
-                    replyDiv.innerHTML = `<div class="thread-author ${r.isTargetMember ? 'scott' : ''}">↳ ${r.author}</div><div class="thread-content">${escHtml(r.content)}</div>`;
-                    div.appendChild(replyDiv);
-                });
-
-                tc.appendChild(div);
-            });
+            // Scott's reply
+            $("scottContent").textContent = entry.scottReply.content;
 
             // Tone pills
             const toneC = $("toneContainer");
@@ -901,7 +879,11 @@
                 btn.style.color = active ? opt.color : "#777";
                 btn.textContent = (active ? "✓ " : "") + opt.label;
                 btn.onclick = () => {
-                    toggleTone(opt.value);
+                    if (!tags.tone_tags) tags.tone_tags = [];
+                    const idx = tags.tone_tags.indexOf(opt.value);
+                    if (idx === -1) tags.tone_tags.push(opt.value);
+                    else tags.tone_tags.splice(idx, 1);
+                    saveToServer();
                     render();
                 };
                 toneC.appendChild(btn);
@@ -917,6 +899,7 @@
                 btn.innerHTML = `<span class="label">${opt.label}</span><span class="desc">${opt.desc}</span>`;
                 btn.onclick = () => {
                     tags.intent = opt.value;
+                    saveToServer();
                     render();
                 };
                 intC.appendChild(btn);
@@ -932,6 +915,7 @@
                 btn.innerHTML = `<span class="icon">${s.icon}</span><span>${s.label}</span>`;
                 btn.onclick = () => {
                     tags.sales_stage = s.value;
+                    saveToServer();
                     render();
                 };
                 stC.appendChild(btn);
@@ -946,93 +930,59 @@
             // Nav dots
             const dots = $("navDots");
             dots.innerHTML = "";
-            data.forEach((d, i) => {
-                const t = d.tags;
+            entries.forEach((e, i) => {
+                const t = e.scottReply.tags;
                 const tagged = (t.tone_tags || []).length > 0 && t.intent && t.sales_stage;
                 const btn = document.createElement("button");
                 btn.className = "nav-dot" + (i === currentIndex ? " active" : "") + (tagged ? " tagged" : "");
                 btn.textContent = i + 1;
-                btn.onclick = () => {
-                    currentIndex = i;
-                    render();
-                };
+                btn.onclick = () => { currentIndex = i; render(); };
                 dots.appendChild(btn);
             });
 
             // Progress
-            const totalTagged = data.filter(d => {
-                const t = d.tags;
+            const totalTagged = entries.filter(e => {
+                const t = e.scottReply.tags;
                 return (t.tone_tags || []).length > 0 && t.intent && t.sales_stage;
             }).length;
-            const pct = Math.round((totalTagged / data.length) * 100);
-            $("progressText").textContent = totalTagged + "/" + data.length + " tagged · " + pct + "% complete";
+            const pct = Math.round((totalTagged / entries.length) * 100);
+            $("progressText").textContent = totalTagged + "/" + entries.length + " replies tagged · " + pct + "% complete";
             $("progressBar").style.width = pct + "%";
 
             // Nav buttons
             $("prevBtn").disabled = currentIndex === 0;
-            $("nextBtn").disabled = currentIndex === data.length - 1;
-            if (currentIndex === data.length - 1) $("nextBtn").className = "nav-btn next";
-            $("navInfo").textContent = (currentIndex + 1) + " / " + data.length + " · Use arrow keys";
-        }
-
-        function escHtml(str) {
-            const div = document.createElement("div");
-            div.textContent = str;
-            return div.innerHTML;
-        }
-
-        function toggleTone(value) {
-            const tags = data[currentIndex].tags;
-            if (!tags.tone_tags) tags.tone_tags = [];
-            const idx = tags.tone_tags.indexOf(value);
-            if (idx === -1) tags.tone_tags.push(value);
-            else tags.tone_tags.splice(idx, 1);
+            $("nextBtn").disabled = currentIndex === entries.length - 1;
+            if (currentIndex === entries.length - 1) $("nextBtn").className = "nav-btn next";
+            $("navInfo").textContent = (currentIndex + 1) + " / " + entries.length + " · Use arrow keys";
         }
 
         // ─── NAVIGATION ──────────────────────────────────
         $("prevBtn").addEventListener("click", () => {
-            if (currentIndex > 0) {
-                currentIndex--;
-                render();
-            }
+            if (currentIndex > 0) { currentIndex--; render(); }
         });
         $("nextBtn").addEventListener("click", () => {
-            if (currentIndex < data.length - 1) {
-                currentIndex++;
-                render();
-            }
+            if (currentIndex < entries.length - 1) { currentIndex++; render(); }
         });
 
         document.addEventListener("keydown", e => {
-            if (!data.length) return;
+            if (!entries.length) return;
             if (e.key === "ArrowRight" || e.key === "ArrowDown") {
                 e.preventDefault();
-                if (currentIndex < data.length - 1) {
-                    currentIndex++;
-                    render();
-                }
+                if (currentIndex < entries.length - 1) { currentIndex++; render(); }
             }
             if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
                 e.preventDefault();
-                if (currentIndex > 0) {
-                    currentIndex--;
-                    render();
-                }
+                if (currentIndex > 0) { currentIndex--; render(); }
             }
         });
 
         // ─── EXPORT ──────────────────────────────────────
         $("exportBtn").addEventListener("click", () => {
-            const output = {
-                interactions: data
-            };
-            const blob = new Blob([JSON.stringify(output, null, 2)], {
-                type: "application/json"
-            });
+            const blob = new Blob([JSON.stringify(allPosts, null, 2)], { type: "application/json" });
             const url = URL.createObjectURL(blob);
             const a = document.createElement("a");
             a.href = url;
-            a.download = "skool_data_tagged.json";
+            a.download = "posts_with_scott_reply_tagged.json";
             a.click();
             URL.revokeObjectURL(url);
             const toast = $("toast");
