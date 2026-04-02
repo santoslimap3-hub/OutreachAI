@@ -3,7 +3,14 @@
     "allow": [
       "Bash(node scraper.js)",
       "Bash(ruby -rjson:*)",
-      "Bash(npm install:*)"
+      "Bash(npm install:*)",
+      "Bash(ruby -e 'require \"json\"; data = JSON.parse\\(File.read\\(\"/home/santo/OutreachAi/data/posts_with_scott_reply_threads.json\"\\)\\); post = data.find {|p| p[\"id\"] == \"090\"}; post[\"threads\"].each {|t| author = t[\"comment\"][\"author\"]; puts \"Author: [#{author.inspect}] length=#{author.length}\"}')",
+      "Bash(ruby -e 'require \"json\"; data = JSON.parse\\(File.read\\(\"/home/santo/OutreachAi/data/posts_with_scott_reply_threads.json\"\\)\\); post = data.find {|p| p[\"id\"] == \"090\"}; puts JSON.pretty_generate\\(post[\"threads\"][0].keys\\); puts \"---\"; post[\"threads\"].each {|t| puts t.keys.inspect}')",
+      "Bash(ruby -e 'require \"json\"; data = JSON.parse\\(File.read\\(\"/home/santo/OutreachAi/data/posts_with_scott_reply_threads.json\"\\)\\); post = data.find {|p| p[\"id\"] == \"090\"}; post[\"threads\"].each {|t| puts t[\"comment\"][\"author\"].inspect; t[\"replies\"].each {|r| puts \"  reply: #{r[\"author\"].inspect}\"}}')",
+      "Bash(ruby /home/santo/OutreachAi/tool_scripts/post_reply_only_filtering.rb)",
+      "Bash(ruby -e:*)",
+      "Bash(ruby tool_scripts/post_reply_only_filtering.rb)",
+      "Bash(ruby tool_scripts/convert_to_jsonl.rb)"
     ]
   }
 }

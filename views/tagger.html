@@ -613,6 +613,10 @@
             value: "brotherhood",
             color: "#4ECDC4"
         }, {
+            label: "Mystery / Teasing",
+            value: "mystery-teasing",
+            color: "#4ECDC4"
+        }, {
             label: "Empathy",
             value: "empathy",
             color: "#A8DADC"
@@ -636,6 +640,10 @@
             label: "Humor / Playful",
             value: "humor",
             color: "#2EC4B6"
+        }, {
+            label: "Self-Aggrandization",
+            value: "self-aggrandization",
+            color: "#264653"
         }, {
             label: "Direct / No-BS",
             value: "direct",
@@ -666,6 +674,10 @@
             label: "Social Proof",
             value: "social-proof",
             desc: "Showcasing results, wins, testimonials"
+        }, {
+            label: "Authority-Proofing",
+            value: "authority-proofing",
+            desc: "Generally one-liners showcasing Scott's incredible knowledge and expertise on the topic"
         }, {
             label: "Pain Point Agitation",
             value: "pain-agitation",
@@ -705,8 +717,8 @@
             value: "nurture",
             icon: "🌱"
         }, {
-            label: "Close",
-            value: "close",
+            label: "Ask",
+            value: "ask",
             icon: "🎯"
         }, ];
 
@@ -715,8 +727,8 @@
         }
 
         // ─── STATE ───────────────────────────────────────
-        let allPosts = [];   // full posts array (written back to server)
-        let entries = [];    // flattened: one entry per Scott reply
+        let allPosts = []; // full posts array (written back to server)
+        let entries = []; // flattened: one entry per Scott reply
         let currentIndex = 0;
         let serverMode = false;
 
@@ -740,7 +752,11 @@
 
                     // Scott wrote the top-level comment → context is the original post
                     if (isScott(comment.author)) {
-                        if (!comment.tags) comment.tags = { tone_tags: [], intent: "", sales_stage: "" };
+                        if (!comment.tags) comment.tags = {
+                            tone_tags: [],
+                            intent: "",
+                            sales_stage: ""
+                        };
                         entries.push({
                             post: post,
                             contextType: "post",
@@ -753,7 +769,11 @@
                     // Check each reply
                     (thread.replies || []).forEach((reply, ri) => {
                         if (isScott(reply.author)) {
-                            if (!reply.tags) reply.tags = { tone_tags: [], intent: "", sales_stage: "" };
+                            if (!reply.tags) reply.tags = {
+                                tone_tags: [],
+                                intent: "",
+                                sales_stage: ""
+                            };
                             // Context is the message right before this reply (previous reply, or the comment)
                             let ctx;
                             if (ri === 0) {
@@ -788,7 +808,9 @@
             if (!serverMode) return;
             fetch('/api/posts', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json'
+                },
                 body: JSON.stringify(allPosts)
             }).catch(() => {});
         }
@@ -828,13 +850,45 @@
                 inp.onchange = e => handleFile(e.target.files[0]);
                 inp.click();
             });
-            dz.addEventListener("dragover", e => { e.preventDefault(); dz.classList.add("over"); });
+            dz.addEventListener("dragover", e => {
+                e.preventDefault();
+                dz.classList.add("over");
+            });
             dz.addEventListener("dragleave", () => dz.classList.remove("over"));
-            dz.addEventListener("drop", e => { e.preventDefault(); dz.classList.remove("over"); handleFile(e.dataTransfer.files[0]); });
+            dz.addEventListener("drop", e => {
+                e.preventDefault();
+                dz.classList.remove("over");
+                handleFile(e.dataTransfer.files[0]);
+            });
             $("demoBtn").addEventListener("click", () => loadData([{
                 id: "001",
-                original_post: { author: "Kai Cerar", title: "Congrats on the website!", body: "This is amazing, you guys are really building something special here.", category: "The Hero's Journey", timestamp: "10h" },
-                threads: [{ comment: { author: "Kai Cerar", content: "WOW Looks fire BROO!!!!", isTargetMember: false }, replies: [{ author: "Scott Northwolf", content: "@Kai Cerar thanks, brother. Wait until you see the FIRE content we are recording at our brand new villa...", isTargetMember: true }, { author: "Kai Cerar", content: "@Scott Northwolf BROOO LETS FUCKIN GOOOO!!", isTargetMember: false }, { author: "Scott Northwolf", content: "@Kai Cerar LFG brother!!", isTargetMember: true }] }],
+                original_post: {
+                    author: "Kai Cerar",
+                    title: "Congrats on the website!",
+                    body: "This is amazing, you guys are really building something special here.",
+                    category: "The Hero's Journey",
+                    timestamp: "10h"
+                },
+                threads: [{
+                    comment: {
+                        author: "Kai Cerar",
+                        content: "WOW Looks fire BROO!!!!",
+                        isTargetMember: false
+                    },
+                    replies: [{
+                        author: "Scott Northwolf",
+                        content: "@Kai Cerar thanks, brother. Wait until you see the FIRE content we are recording at our brand new villa...",
+                        isTargetMember: true
+                    }, {
+                        author: "Kai Cerar",
+                        content: "@Scott Northwolf BROOO LETS FUCKIN GOOOO!!",
+                        isTargetMember: false
+                    }, {
+                        author: "Scott Northwolf",
+                        content: "@Kai Cerar LFG brother!!",
+                        isTargetMember: true
+                    }]
+                }],
                 scott_involved: true
             }]));
         }, 0);
@@ -936,7 +990,10 @@
                 const btn = document.createElement("button");
                 btn.className = "nav-dot" + (i === currentIndex ? " active" : "") + (tagged ? " tagged" : "");
                 btn.textContent = i + 1;
-                btn.onclick = () => { currentIndex = i; render(); };
+                btn.onclick = () => {
+                    currentIndex = i;
+                    render();
+                };
                 dots.appendChild(btn);
             });
 
@@ -958,27 +1015,41 @@
 
         // ─── NAVIGATION ──────────────────────────────────
         $("prevBtn").addEventListener("click", () => {
-            if (currentIndex > 0) { currentIndex--; render(); }
+            if (currentIndex > 0) {
+                currentIndex--;
+                render();
+            }
         });
         $("nextBtn").addEventListener("click", () => {
-            if (currentIndex < entries.length - 1) { currentIndex++; render(); }
+            if (currentIndex < entries.length - 1) {
+                currentIndex++;
+                render();
+            }
         });
 
         document.addEventListener("keydown", e => {
             if (!entries.length) return;
             if (e.key === "ArrowRight" || e.key === "ArrowDown") {
                 e.preventDefault();
-                if (currentIndex < entries.length - 1) { currentIndex++; render(); }
+                if (currentIndex < entries.length - 1) {
+                    currentIndex++;
+                    render();
+                }
             }
             if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
                 e.preventDefault();
-                if (currentIndex > 0) { currentIndex--; render(); }
+                if (currentIndex > 0) {
+                    currentIndex--;
+                    render();
+                }
             }
         });
 
         // ─── EXPORT ──────────────────────────────────────
         $("exportBtn").addEventListener("click", () => {
-            const blob = new Blob([JSON.stringify(allPosts, null, 2)], { type: "application/json" });
+            const blob = new Blob([JSON.stringify(allPosts, null, 2)], {
+                type: "application/json"
+            });
             const url = URL.createObjectURL(blob);
             const a = document.createElement("a");
             a.href = url;
