@@ -1,14 +1,15 @@
 {
-  "name": "skool-community-scraper",
-  "version": "1.0.0",
-  "description": "Playwright scraper for extracting community post data from Skool",
-  "main": "scraper.js",
-  "scripts": {
-    "scrape": "node scraper.js",
-    "setup": "npx playwright install chromium"
-  },
-  "dependencies": {
-    "playwright": "^1.42.0",
-    "dotenv": "^16.4.0"
-  }
+    "name": "skool-community-scraper",
+    "version": "1.0.0",
+    "description": "Playwright scraper for extracting community post data from Skool",
+    "main": "scraper.js",
+    "scripts": {
+        "scrape": "node scraper.js",
+        "scrape-contributions": "node scrape_contributions.js",
+        "setup": "npx playwright install chromium"
+    },
+    "dependencies": {
+        "playwright": "^1.42.0",
+        "dotenv": "^16.4.0"
+    }
 }

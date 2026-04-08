@@ -5,6 +5,7 @@
     "main": "auto_reply.js",
     "scripts": {
         "start": "node auto_reply.js",
+        "dm": "node dm_reply.js",
         "setup": "npx playwright install chromium"
     },
     "dependencies": {

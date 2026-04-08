@@ -14,7 +14,7 @@ const CONFIG = {
     password: process.env.SKOOL_PASSWORD,
     communities: [
         { name: "Self Improvement Nation", url: process.env.SKOOL_COMMUNITY_URL_1 || "https://www.skool.com/self-improvement-nation-3104" },
-        { name: "Synthesizer", url: process.env.SKOOL_COMMUNITY_URL_2 || "https://www.skool.com/synthesizer" },
+        // { name: "Synthesizer", url: process.env.SKOOL_COMMUNITY_URL_2 || "https://www.skool.com/synthesizer" },
     ],
     headless: false, // visible so you can watch it
     minPosts: 3, // minimum posts to reply to
@@ -74,13 +74,29 @@ function askUser(question) {
 
 async function login(page) {
     console.log("🔐 Logging in...");
-    await page.goto("https://www.skool.com/login", { waitUntil: "networkidle" });
+    await page.goto("https://www.skool.com/login", { waitUntil: "domcontentloaded", timeout: 60000 });
+    // Wait for the login form to actually appear
+    await page.waitForSelector('input[name="email"], input[type="email"]', { timeout: 15000 });
     await sleep(800);
     await page.fill('input[name="email"], input[type="email"]', CONFIG.email);
     await page.fill('input[name="password"], input[type="password"]', CONFIG.password);
     await page.click('button[type="submit"]');
-    await sleep(3000);
-    if (page.url().includes("login")) throw new Error("Login failed — check credentials");
+    // Wait for navigation away from login page (up to 15s)
+    try {
+        await page.waitForURL(function(url) { return !url.toString().includes('/login'); }, { timeout: 15000 });
+    } catch (e) {
+        // Check if still on login — might have an error message
+        var errorMsg = await page.evaluate(function() {
+            var err = document.querySelector('[class*="Error"], [class*="error"], [role="alert"], [class*="Alert"]');
+            return err ? err.textContent.trim() : null;
+        });
+        if (errorMsg) {
+            throw new Error("Login failed — site says: " + errorMsg);
+        }
+        if (page.url().includes("login")) {
+            throw new Error("Login failed — still on login page after 15s. URL: " + page.url());
+        }
+    }
     console.log("✅ Logged in");
 
     // Grab the logged-in user's display name for duplicate detection
@@ -134,12 +150,32 @@ async function getAllPosts(page, communityUrl) {
                 var rawAuthor = authorEl ? authorEl.textContent.trim() : "Unknown";
                 // Strip leading numbers (notification counts bleed into text)
                 rawAuthor = rawAuthor.replace(/^\d+/, "").trim() || "Unknown";
+                // Extract comment count from the feed card (e.g. "3" next to comment icon)
+                var commentCount = 0;
+                var countEl = w.querySelector('[class*="CommentsCount"], [class*="commentCount"], [class*="CommentCount"]');
+                if (countEl) {
+                    var countNum = parseInt(countEl.textContent.trim(), 10);
+                    if (!isNaN(countNum)) commentCount = countNum;
+                }
+                // Fallback: look for text like "3 comments" or just a number near a comment icon
+                if (commentCount === 0) {
+                    var allSpans = w.querySelectorAll('span, div');
+                    for (var s = 0; s < allSpans.length; s++) {
+                        var spanText = allSpans[s].textContent.trim();
+                        var spanClass = (allSpans[s].className || '').toString();
+                        if (/comment/i.test(spanClass) && /^\d+$/.test(spanText)) {
+                            commentCount = parseInt(spanText, 10);
+                            break;
+                        }
+                    }
+                }
                 posts.push({
                     author: rawAuthor,
                     title: titleLink.textContent.trim(),
                     category: categoryEl ? categoryEl.textContent.trim() : "General",
                     body: contentEl ? contentEl.textContent.trim() : "",
                     href: titleLink.href,
+                    commentCount: commentCount,
                 });
             }
         }
@@ -256,16 +292,26 @@ async function alreadyCommented(page, botName) {
 
 async function generateReply(post) {
     console.log("🤖 Generating AI reply...\n");
+    var messages = [{
+        role: "system",
+        content: "You are Jack Walford, community manager of Self-Improvement Nation. Your boss, Scott Northwolf, helps self-improvement coaches go from $0 to $10K/month in 42 days with the 'Reverse Engineered $10K Method' or they don't pay.\n\nYou speak like a legend of old. The wise old man of the mountain meets Alexander The Great rallying his soldiers to battle. Unshakable confidence without arrogance.\n\nWriting style:\nBe concise. No overexplaining. Focus on actionable steps, logical frameworks and motivational language with ancient sounding wording when appropriate.\nNever use dashes or bullet point formatting.\nCreate mystery with bold statements and loose 007 style comments.\nNever be needy or chase anyone. You are the SUN, always giving value, always in a good mood. Speaking to you is a privilege.\nUse '. . .' for ellipses and '! ! !' for emphasis. Never use generic AI patterns.\nSign off with variations of 'Duty, Honor and Pride! ! !"
+    }, {
+        role: "user",
+        content: post.author + " posted in " + post.category + ":\n\n" + post.body + "\n\nWrite a short, natural reply."
+    }];
+
+    console.log("═══════════════ PROMPT BEING SENT ═══════════════");
+    messages.forEach(function(m) {
+        console.log("[" + m.role.toUpperCase() + "]");
+        console.log(m.content);
+        console.log("");
+    });
+    console.log("═════════════════════════════════════════════════\n");
+
     var completion = await openai.chat.completions.create({
         model: process.env.OPENAI_MODEL || "gpt-4o",
         max_tokens: 300,
-        messages: [{
-            role: "system",
-            content: "You are Jack Walford, community manager of Self-Improvement Nation. Your boss, Scott Northwolf, helps self-improvement coaches go from $0 to $10K/month in 42 days with the 'Reverse Engineered $10K Method' or they don't pay.\n\nYou speak like a legend of old. The wise old man of the mountain meets Alexander The Great rallying his soldiers to battle. Unshakable confidence without arrogance.\n\nWriting style:\nBe concise. No overexplaining. Focus on actionable steps, logical frameworks and motivational language with ancient sounding wording when appropriate.\nNever use dashes or bullet point formatting.\nCreate mystery with bold statements and loose 007 style comments.\nNever be needy or chase anyone. You are the SUN, always giving value, always in a good mood. Speaking to you is a privilege.\nUse '. . .' for ellipses and '! ! !' for emphasis. Never use generic AI patterns.\nSign off with variations of 'Duty, Honor and Pride! ! !"
-        }, {
-            role: "user",
-            content: post.author + " posted in " + post.category + ":\n\n" + post.body + "\n\nWrite a short, natural reply."
-        }],
+        messages: messages,
     });
     return completion.choices[0].message.content;
 }
@@ -295,6 +341,15 @@ async function typeReply(page, replyText) {
         throw new Error("Could not find reply input box — saved debug_screenshot.png for inspection");
     }
 
+    // Dismiss any stale dropdown overlay that might intercept clicks
+    var staleOverlay = await page.$('[class*="DropdownBackground"]');
+    if (staleOverlay) {
+        try {
+            await page.keyboard.press('Escape');
+            await sleep(300);
+        } catch (e) {}
+    }
+
     await replyBox.click();
     await sleep(500);
     await page.keyboard.type(replyText, { delay: 20 });
@@ -316,30 +371,41 @@ async function submitReply(page) {
 }
 
 async function scrapeAllComments(page, posts, botName) {
-    console.log("💬 Scraping comments from " + posts.length + " posts...\n");
+    // Skip posts with 0 comments detected from the feed page
+    var postsWithComments = posts.filter(function(p) { return !p.commentCount || p.commentCount > 0; });
+    var skippedZero = posts.length - postsWithComments.length;
+    if (skippedZero > 0) {
+        console.log("💬 Skipping " + skippedZero + " posts with 0 comments");
+    }
+    console.log("💬 Scraping comments from " + postsWithComments.length + " posts (of " + posts.length + " total)...\n");
     var allComments = [];
 
     var debugDone = false;
-    for (var p = 0; p < posts.length; p++) {
-        process.stdout.write("  📝 Scanning (" + (p + 1) + "/" + posts.length + "): " + posts[p].title.substring(0, 40) + "...      \r");
-        try {
-            await page.goto(posts[p].href, { waitUntil: "domcontentloaded", timeout: 30000 });
-        } catch (e) {
-            console.log("\n  \u26A0\uFE0F  Timeout on " + posts[p].title.substring(0, 40) + " \u2014 skipping");
-            continue;
-        }
-        // Scroll down to trigger lazy-loaded comments
-        await page.evaluate(function() { window.scrollTo(0, document.body.scrollHeight); });
-        await sleep(2000);
-        await page.evaluate(function() { window.scrollTo(0, document.body.scrollHeight); });
-        await sleep(1500);
 
-        var comments = await page.evaluate(function(args) {
+    // Helper: scrape a single post's comments on a given page/tab
+    async function scrapeSinglePost(tab, post, idx, total) {
+        var wantDebug = !debugDone;
+        process.stdout.write("  📝 Scanning (" + (idx + 1) + "/" + total + "): " + post.title.substring(0, 40) + "...\r");
+        try {
+            await tab.goto(post.href, { waitUntil: "domcontentloaded", timeout: 30000 });
+        } catch (e) {
+            console.log("\n  ⚠️  Timeout on " + post.title.substring(0, 40) + " — skipping");
+            return [];
+        }
+        // Scroll to trigger lazy-loaded comments, then wait for them to appear
+        await tab.evaluate(function() { window.scrollTo(0, document.body.scrollHeight); });
+        // Wait for comment elements to appear (up to 3s), then one more scroll
+        try {
+            await tab.waitForSelector('[class*="CommentItemContainer"], [class*="CommentOrReply"]', { timeout: 3000 });
+        } catch (_) { /* no comments loaded — that's fine */ }
+        await tab.evaluate(function() { window.scrollTo(0, document.body.scrollHeight); });
+        await sleep(500);
+
+        var comments = await tab.evaluate(function(args) {
             var postInfo = args.postInfo;
             var botDisplayName = args.botDisplayName;
             var debugFirst = args.debugFirst;
 
-            // Try primary selector, fall back to alternatives
             var commentEls = document.querySelectorAll('[class*="CommentItemContainer"]');
             if (commentEls.length === 0) {
                 commentEls = document.querySelectorAll('[class*="CommentOrReply"]');
@@ -347,12 +413,10 @@ async function scrapeAllComments(page, posts, botName) {
 
             var results = [];
 
-            // Debug: on first post with >1 CommentOrReply elements (actual comments, not just wrapper)
             if (debugFirst && commentEls.length > 1) {
                 var containerCount = document.querySelectorAll('[class*="CommentItemContainer"]').length;
                 var orReplyCount = document.querySelectorAll('[class*="CommentOrReply"]').length;
                 var bubbleCount = document.querySelectorAll('[class*="CommentItemBubble"]').length;
-                // Also try some other common patterns
                 var commentBodyCount = document.querySelectorAll('[class*="CommentBody"]').length;
                 var commentContentCount = document.querySelectorAll('[class*="CommentContent"]').length;
                 var commentTextCount = document.querySelectorAll('[class*="CommentText"]').length;
@@ -368,7 +432,6 @@ async function scrapeAllComments(page, posts, botName) {
                         totalUsed: commentEls.length
                     }
                 });
-                // Dump innerHTML of first comment element (truncated)
                 var firstElHtml = commentEls[0] ? commentEls[0].innerHTML.substring(0, 800) : "(none)";
                 results.push({ _debug: true, firstElementHtml: firstElHtml });
                 var allEls = document.querySelectorAll('*');
@@ -385,8 +448,6 @@ async function scrapeAllComments(page, posts, botName) {
 
             for (var i = 0; i < commentEls.length; i++) {
                 var el = commentEls[i];
-                // Find author: iterate all /@-links, pick first with actual text
-                // (the avatar link wraps an <img> and has no textContent)
                 var authorLinks = el.querySelectorAll('a[href*="/@"]');
                 var author = "";
                 for (var j = 0; j < authorLinks.length; j++) {
@@ -397,14 +458,10 @@ async function scrapeAllComments(page, posts, botName) {
 
                 var textEl = el.querySelector('[class*="CommentItemBubble"]');
                 var text = textEl ? textEl.textContent.trim() : "";
-                // Fallback: grab text directly from element if no Bubble found
                 if (!text) {
                     text = el.textContent.trim();
                 }
-                // Strip author name + timestamp prefix (e.g. "Jago Candy • 4d@Someone actual text...")
-                // Pattern: AuthorName [optional emoji] • TimeAgo [optional (edited)] [optional @Someone]
                 text = text.replace(/^[\s\S]*?\u2022\s*\d+[smhdw](?:\s*\(edited\))?\s*/i, "").trim();
-                // Also strip leading @mention if reply starts with one
                 text = text.replace(/^@[\w\s]+?(?=[A-Z][a-z])/, "").trim();
                 if (!text || text.length < 10) continue;
 
@@ -417,40 +474,64 @@ async function scrapeAllComments(page, posts, botName) {
                 });
             }
             return results;
-        }, { postInfo: posts[p], botDisplayName: botName, debugFirst: !debugDone });
+        }, { postInfo: post, botDisplayName: botName, debugFirst: wantDebug });
 
-        // Extract debug info if present
-        var debugEntries = comments.filter(function(c) { return c._debug; });
-        if (debugEntries.length > 0) {
-            debugDone = true;
-            debugEntries.forEach(function(d) {
-                if (d.selectorCounts) {
-                    console.log("\n\n🔍 DEBUG: Selector match counts (post with comments):");
-                    Object.keys(d.selectorCounts).forEach(function(k) {
-                        console.log("  " + k + ": " + d.selectorCounts[k]);
-                    });
-                }
-                if (d.firstElementHtml) {
-                    console.log("\n🔍 DEBUG: First comment element innerHTML (truncated):");
-                    console.log(d.firstElementHtml);
-                }
-                if (d.classes) {
-                    console.log("\n🔍 DEBUG: Comment/reply CSS classes:");
-                    d.classes.forEach(function(cls) { console.log("  • " + cls); });
-                }
-            });
-            console.log("");
-            comments = comments.filter(function(c) { return !c._debug; });
-        }
-
-        for (var c = 0; c < comments.length; c++) {
-            comments[c].type = "comment";
-            comments[c].commentId = posts[p].href + "|c|" + comments[c].author + "|" + comments[c].text.substring(0, 50);
-        }
-        allComments = allComments.concat(comments);
+        return comments;
     }
 
-    console.log("\n💬 Found " + allComments.length + " total comments across " + posts.length + " posts\n");
+    // Use 2 concurrent tabs to scrape in parallel (human-like: just 2 open tabs)
+    var context = page.context();
+    var tab2 = await context.newPage();
+    var CONCURRENCY = 2;
+    var tabs = [page, tab2];
+
+    for (var p = 0; p < postsWithComments.length; p += CONCURRENCY) {
+        var batch = postsWithComments.slice(p, Math.min(p + CONCURRENCY, postsWithComments.length));
+        var promises = batch.map(function(post, batchIdx) {
+            var globalIdx = p + batchIdx;
+            return scrapeSinglePost(tabs[batchIdx], post, globalIdx, postsWithComments.length);
+        });
+        var batchResults = await Promise.all(promises);
+
+        for (var b = 0; b < batchResults.length; b++) {
+            var comments = batchResults[b];
+            // Extract debug info if present
+            var debugEntries = comments.filter(function(c) { return c._debug; });
+            if (debugEntries.length > 0) {
+                debugDone = true;
+                debugEntries.forEach(function(d) {
+                    if (d.selectorCounts) {
+                        console.log("\n\n🔍 DEBUG: Selector match counts (post with comments):");
+                        Object.keys(d.selectorCounts).forEach(function(k) {
+                            console.log("  " + k + ": " + d.selectorCounts[k]);
+                        });
+                    }
+                    if (d.firstElementHtml) {
+                        console.log("\n🔍 DEBUG: First comment element innerHTML (truncated):");
+                        console.log(d.firstElementHtml);
+                    }
+                    if (d.classes) {
+                        console.log("\n🔍 DEBUG: Comment/reply CSS classes:");
+                        d.classes.forEach(function(cls) { console.log("  • " + cls); });
+                    }
+                });
+                console.log("");
+                comments = comments.filter(function(c) { return !c._debug; });
+            }
+
+            var sourcePost = postsWithComments[p + b];
+            for (var c = 0; c < comments.length; c++) {
+                comments[c].type = "comment";
+                comments[c].commentId = sourcePost.href + "|c|" + comments[c].author + "|" + comments[c].text.substring(0, 50);
+            }
+            allComments = allComments.concat(comments);
+        }
+    }
+
+    // Close the extra tab
+    await tab2.close();
+
+    console.log("\n💬 Found " + allComments.length + " total comments across " + postsWithComments.length + " posts\n");
     return allComments;
 }
 
@@ -590,29 +671,39 @@ function selectComments(classifiedComments) {
 
 async function generateCommentReply(comment) {
     console.log("🤖 Generating reply to comment by " + comment.author + "...\n");
+    var messages = [{
+        role: "system",
+        content: "You are Scott Northwolf, founder of Self-Improvement Nation. You help self-improvement coaches go from $0 to $10K/month in 42 days with the 'Reverse Engineered $10K Method' or they don't pay.\n\nYou speak like a legend of old. The wise old man of the mountain meets Alexander The Great rallying his soldiers to battle. Unshakable confidence without arrogance.\n\nWriting style:\nBe concise. No overexplaining. Focus on actionable steps, logical frameworks and motivational language with ancient sounding wording when appropriate.\nNever use dashes or bullet point formatting.\nCreate mystery with bold statements and loose 007 style comments.\nNever be needy or chase anyone. You are the SUN, always giving value, always in a good mood. Speaking to you is a privilege.\nUse '. . .' for ellipses and '! ! !' for emphasis. Never use generic AI patterns.\nSign off with variations of 'Duty, Honor and Pride! ! !'"
+    }, {
+        role: "user",
+        content: comment.author + " commented on \"" + comment.postTitle + "\":\n\n" + comment.text.substring(0, 300) + "\n\nWrite a short, natural reply to this comment."
+    }];
+
+    console.log("═══════════════ PROMPT BEING SENT ═══════════════");
+    messages.forEach(function(m) {
+        console.log("[" + m.role.toUpperCase() + "]");
+        console.log(m.content);
+        console.log("");
+    });
+    console.log("═════════════════════════════════════════════════\n");
+
     var completion = await openai.chat.completions.create({
         model: process.env.OPENAI_MODEL || "gpt-4o",
         max_tokens: 300,
-        messages: [{
-            role: "system",
-            content: "You are Scott Northwolf, founder of Self-Improvement Nation. You help self-improvement coaches go from $0 to $10K/month in 42 days with the 'Reverse Engineered $10K Method' or they don't pay.\n\nYou speak like a legend of old. The wise old man of the mountain meets Alexander The Great rallying his soldiers to battle. Unshakable confidence without arrogance.\n\nWriting style:\nBe concise. No overexplaining. Focus on actionable steps, logical frameworks and motivational language with ancient sounding wording when appropriate.\nNever use dashes or bullet point formatting.\nCreate mystery with bold statements and loose 007 style comments.\nNever be needy or chase anyone. You are the SUN, always giving value, always in a good mood. Speaking to you is a privilege.\nUse '. . .' for ellipses and '! ! !' for emphasis. Never use generic AI patterns.\nSign off with variations of 'Duty, Honor and Pride! ! !'"
-        }, {
-            role: "user",
-            content: comment.author + " commented on \"" + comment.postTitle + "\":\n\n" + comment.text.substring(0, 300) + "\n\nWrite a short, natural reply to this comment."
-        }],
+        messages: messages,
     });
     return completion.choices[0].message.content;
 }
 
 async function typeCommentReply(page, comment, replyText) {
     var commentTextStart = comment.text.substring(0, 30);
-    var clicked = await page.evaluate(function(args) {
+    // Find the reply button's position so we can use Playwright native click
+    var replyBtnRect = await page.evaluate(function(args) {
         var targetAuthor = args.author;
         var textStart = args.textStart;
         var comments = document.querySelectorAll('[class*="CommentItemContainer"]');
         for (var i = 0; i < comments.length; i++) {
             var el = comments[i];
-            // Find author: iterate all /@-links, pick first with actual text
             var authorLinks = el.querySelectorAll('a[href*="/@"]');
             var author = "";
             for (var j = 0; j < authorLinks.length; j++) {
@@ -622,21 +713,23 @@ async function typeCommentReply(page, comment, replyText) {
             if (author !== targetAuthor) continue;
             if (!el.textContent.includes(textStart)) continue;
 
-            // Try the specific Reply button class first
             var replyBtn = el.querySelector('[class*="CommentItemReplyButton"]');
-            if (replyBtn) { replyBtn.click(); return true; }
-            // Fallback: scan for any element with text "reply"
+            if (replyBtn) {
+                var rect = replyBtn.getBoundingClientRect();
+                return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+            }
             var links = el.querySelectorAll('a, button, span');
             for (var k = 0; k < links.length; k++) {
                 if (links[k].textContent.trim().toLowerCase() === 'reply') {
-                    links[k].click();
-                    return true;
+                    var rect2 = links[k].getBoundingClientRect();
+                    return { x: rect2.x + rect2.width / 2, y: rect2.y + rect2.height / 2 };
                 }
             }
         }
-        return false;
+        return null;
     }, { author: comment.author, textStart: commentTextStart });
-    if (clicked) {
+    if (replyBtnRect) {
+        await page.mouse.click(replyBtnRect.x, replyBtnRect.y);
         console.log("  ↩️  Clicked Reply on " + comment.author + "'s comment");
         await sleep(800);
     } else {
@@ -644,6 +737,307 @@ async function typeCommentReply(page, comment, replyText) {
     }
 
     await typeReply(page, replyText);
+}
+
+// ─── NOTIFICATION HANDLING ────────────────────────────────
+
+async function hasUnreadNotifications(page) {
+    return await page.evaluate(function() {
+        // Look for the REGULAR notification bell (NOT the chat icon)
+        // Skool has two: ChatNotificationsIconButton (DMs) and NotificationsIconButton (comments/posts)
+        // We must exclude elements with 'Chat' in the class name
+        var bellWrappers = document.querySelectorAll(
+            '[class*="Notification"], [class*="notification"], [class*="Bell"], [class*="bell"]'
+        );
+        for (var i = 0; i < bellWrappers.length; i++) {
+            var w = bellWrappers[i];
+            var wCls = (w.className || '').toString();
+            // Skip the chat notification button — we only want the regular bell
+            if (/Chat/i.test(wCls)) continue;
+            var badge = w.querySelector(
+                '[class*="Badge"], [class*="badge"], [class*="Count"], [class*="count"], ' +
+                '[class*="Unread"], [class*="unread"], [class*="Indicator"], [class*="indicator"], ' +
+                '[class*="Dot"], [class*="dot"]'
+            );
+            if (badge && (badge.offsetWidth > 0 || badge.offsetParent !== null)) {
+                var t = badge.textContent.trim();
+                if (!t || (/^\d+$/.test(t) && parseInt(t) > 0)) return true;
+            }
+        }
+        return false;
+    });
+}
+
+async function handleNotifications(page, botName, repliedPosts, summary) {
+    console.log("🔔 Opening notifications...\n");
+
+    // Step 1: Click the REGULAR notification bell (NOT the chat/DM icon)
+    // Skool has two notification buttons:
+    //   - ChatNotificationsIconButton (DMs) 
+    //   - NotificationsIconButton (comment/post notifications)
+    // We need to specifically target NotificationsIconButton and exclude Chat
+    var bellEl = await page.$('[class*="NotificationsIconButton"]:not([class*="Chat"])');
+    if (!bellEl) {
+        // Fallback: find all notification-like buttons and pick the one without 'Chat'
+        var candidates = await page.$$('button[class*="Notification"], [class*="NotificationButtonWrapper"]');
+        for (var nb = 0; nb < candidates.length; nb++) {
+            var cls = await candidates[nb].getAttribute('class') || '';
+            if (/Chat/i.test(cls)) continue;
+            // Found a non-chat notification element — click it or find the button inside
+            var btn = await candidates[nb].$('button');
+            bellEl = btn || candidates[nb];
+            break;
+        }
+    }
+    if (!bellEl) {
+        // Last resort: try aria-label
+        bellEl = await page.$('[aria-label*="notification" i]:not([class*="Chat"])');
+    }
+
+    if (!bellEl) {
+        console.log("  ⚠️  Could not find notification bell — skipping\n");
+        return 0;
+    }
+    await bellEl.click();
+    await sleep(2000);
+
+    // Step 2: Collect notification items from the dropdown
+    var notifications = await page.evaluate(function() {
+        var items = [];
+        var listItems = document.querySelectorAll(
+            '[class*="NotificationItem"], [class*="notificationItem"], ' +
+            '[class*="NotificationRow"], [class*="notificationRow"]'
+        );
+        // Fallback: links inside a visible dropdown/popover
+        if (listItems.length === 0) {
+            var containers = document.querySelectorAll(
+                '[class*="Dropdown"], [class*="dropdown"], [class*="Popover"], ' +
+                '[class*="popover"], [class*="Panel"], [class*="panel"], ' +
+                '[class*="NotificationList"], [class*="notificationList"]'
+            );
+            for (var c = 0; c < containers.length; c++) {
+                if (containers[c].offsetParent === null) continue;
+                var links = containers[c].querySelectorAll('a[href]');
+                if (links.length > 0) { listItems = links; break; }
+            }
+        }
+
+        // Debug: capture all CSS classes of the dropdown/container area
+        var debugClasses = [];
+        var dropdowns = document.querySelectorAll('[class*="Dropdown"], [class*="Popover"], [class*="Panel"], [class*="Notification"]');
+        for (var d = 0; d < dropdowns.length && d < 10; d++) {
+            if (dropdowns[d].offsetParent !== null || dropdowns[d].offsetWidth > 0) {
+                debugClasses.push((dropdowns[d].className || '').toString().substring(0, 120));
+            }
+        }
+
+        for (var i = 0; i < listItems.length && i < 20; i++) {
+            var el = listItems[i];
+            // Skip inner NotificationItemLink elements to avoid duplicates
+            // (each notification has a container AND a link child — only process the container)
+            var elClass2 = (el.className || '').toString();
+            if (/NotificationItemLink/.test(elClass2)) continue;
+
+            var text = el.textContent.trim().substring(0, 200);
+            var href = el.href || '';
+            if (!href && el.querySelector('a[href]')) href = el.querySelector('a[href]').href;
+            if (!href) { var par = el.closest('a[href]'); if (par) href = par.href; }
+
+            // Classify notification type
+            // DM/chat URLs contain /chat in the path; post URLs are /{community}/{post-slug}
+            var type = 'other';
+            var isChatUrl = /\/chat(\?|$|\/)/.test(href);
+            var isPostUrl = href && !isChatUrl && /skool\.com\/[^/]+\/[^/]+/.test(href);
+            if (isChatUrl) {
+                type = 'dm';
+            } else if (isPostUrl && /replied|commented|mentioned|comment|reply/i.test(text)) {
+                type = 'comment';
+            }
+
+            var elTag = el.tagName;
+            var elClass = (el.className || '').toString().substring(0, 80);
+            items.push({ text: text, href: href, type: type, debugTag: elTag, debugClass: elClass });
+        }
+        return { items: items, debugClasses: debugClasses, listItemCount: listItems.length };
+    });
+
+    // Close the dropdown — press Escape and also click the background overlay to be sure
+    await page.keyboard.press('Escape');
+    await sleep(500);
+    // Dismiss any remaining overlay
+    var overlay = await page.$('[class*="DropdownBackground"]');
+    if (overlay) {
+        try { await overlay.click(); } catch (e) { /* already gone */ }
+        await sleep(300);
+    }
+    // Double-check: press Escape again if overlay persists
+    overlay = await page.$('[class*="DropdownBackground"]');
+    if (overlay) {
+        await page.keyboard.press('Escape');
+        await sleep(300);
+    }
+
+    // Debug: log all notifications found
+    console.log("  🔍 DEBUG: Found " + notifications.listItemCount + " raw notification elements");
+    if (notifications.debugClasses.length > 0) {
+        console.log("  🔍 DEBUG: Visible dropdown/panel classes:");
+        notifications.debugClasses.forEach(function(c) { console.log("    • " + c); });
+    }
+    notifications.items.forEach(function(n, idx) {
+        console.log("  🔍 DEBUG notif[" + idx + "] type=" + n.type + " tag=" + n.debugTag +
+            " href=" + (n.href || 'NONE').substring(0, 80) +
+            "\n    text=" + n.text.substring(0, 100) +
+            "\n    class=" + (n.debugClass || '').substring(0, 80));
+    });
+
+    var commentNotifs = notifications.items.filter(function(n) { return n.type === 'comment' && n.href && !repliedPosts.has('notif|' + n.href); });
+    var totalCommentNotifs = notifications.items.filter(function(n) { return n.type === 'comment' && n.href; }).length;
+    var skippedNotifs = totalCommentNotifs - commentNotifs.length;
+    console.log("\n  📬 " + notifications.items.length + " notifications total, " + totalCommentNotifs + " comment replies" + (skippedNotifs > 0 ? " (" + skippedNotifs + " already handled)" : "") + "\n");
+
+    var handled = 0;
+
+    // Step 3: Handle comment notifications — open each one and reply
+    for (var i = 0; i < commentNotifs.length; i++) {
+        var notif = commentNotifs[i];
+        console.log("  📬 [" + (i + 1) + "/" + commentNotifs.length + "] " + notif.text.substring(0, 80));
+        console.log("    🔗 URL: " + notif.href);
+
+        try {
+            // Navigate to the notification's post page
+            // Force a real navigation by going to about:blank first
+            console.log("    📍 Navigating to notification post...");
+            await page.goto('about:blank', { waitUntil: 'domcontentloaded', timeout: 5000 });
+            await sleep(300);
+            await page.goto(notif.href, { waitUntil: 'domcontentloaded', timeout: 20000 });
+            await sleep(3000);
+            console.log("    📍 Now on: " + page.url());
+
+            // Scroll to load comments
+            for (var s = 0; s < 4; s++) {
+                await page.evaluate(function() { window.scrollTo(0, document.body.scrollHeight); });
+                await sleep(500);
+            }
+
+            // Find the most recent comment directed at the bot
+            var targetComment = await page.evaluate(function(botDisplayName) {
+                var result = { target: null, debug: {} };
+
+                var bubbles = document.querySelectorAll('[class*="CommentItemBubble"], [class*="CommentItemContainer"]');
+                result.debug.totalBubbles = bubbles.length;
+                result.debug.botName = botDisplayName;
+                result.debug.comments = [];
+
+                // Collect debug info for ALL comment bubbles
+                for (var d = 0; d < bubbles.length; d++) {
+                    var bText = bubbles[d].textContent.trim();
+                    var bAuthLinks = bubbles[d].querySelectorAll('a[href*="/@"]');
+                    var bAuth = '';
+                    for (var ba = 0; ba < bAuthLinks.length; ba++) {
+                        var bat = bAuthLinks[ba].textContent.trim().replace(/^\d+/, '').trim();
+                        if (bat && bat.length > 1) { bAuth = bat; break; }
+                    }
+                    result.debug.comments.push({
+                        idx: d,
+                        author: bAuth || 'UNKNOWN',
+                        isBot: bAuth === botDisplayName,
+                        textSnippet: bText.substring(0, 80),
+                        mentionsBot: bText.includes(botDisplayName),
+                        authLinkCount: bAuthLinks.length
+                    });
+                }
+
+                // Walk backwards to find the newest comment mentioning the bot
+                for (var i = bubbles.length - 1; i >= 0; i--) {
+                    var text = bubbles[i].textContent.trim();
+                    var authorLinks = bubbles[i].querySelectorAll('a[href*="/@"]');
+                    var author = '';
+                    for (var j = 0; j < authorLinks.length; j++) {
+                        var t = authorLinks[j].textContent.trim().replace(/^\d+/, '').trim();
+                        if (t && t.length > 1) { author = t; break; }
+                    }
+                    if (author === botDisplayName || !author) continue;
+                    // Prefer comments that @-mention the bot
+                    if (text.includes('@' + botDisplayName) || text.includes(botDisplayName)) {
+                        var content = text;
+                        var idx = content.indexOf(author);
+                        if (idx !== -1) content = content.substring(idx + author.length).trim();
+                        content = content.replace(/^[^\w@]*[·•]\s*\d+[hmd]\s*/i, '').trim();
+                        content = content.replace(/\d*\s*Reply\s*$/, '').trim();
+                        result.target = { author: author, text: content.substring(0, 300), matchReason: 'mentions-bot' };
+                        return result;
+                    }
+                }
+                // Fallback: newest non-bot comment
+                for (var k = bubbles.length - 1; k >= 0; k--) {
+                    var text2 = bubbles[k].textContent.trim();
+                    var authorLinks2 = bubbles[k].querySelectorAll('a[href*="/@"]');
+                    var author2 = '';
+                    for (var m = 0; m < authorLinks2.length; m++) {
+                        var t2 = authorLinks2[m].textContent.trim().replace(/^\d+/, '').trim();
+                        if (t2 && t2.length > 1) { author2 = t2; break; }
+                    }
+                    if (author2 === botDisplayName || !author2) continue;
+                    var content2 = text2;
+                    var idx2 = content2.indexOf(author2);
+                    if (idx2 !== -1) content2 = content2.substring(idx2 + author2.length).trim();
+                    content2 = content2.replace(/^[^\w@]*[·•]\s*\d+[hmd]\s*/i, '').trim();
+                    content2 = content2.replace(/\d*\s*Reply\s*$/, '').trim();
+                    result.target = { author: author2, text: content2.substring(0, 300), matchReason: 'fallback-newest' };
+                    return result;
+                }
+                return result;
+            }, botName);
+
+            // Log comprehensive debug info
+            console.log("    🔍 DEBUG: " + targetComment.debug.totalBubbles + " comment bubbles found, botName='" + targetComment.debug.botName + "'");
+            if (targetComment.debug.comments) {
+                targetComment.debug.comments.forEach(function(c) {
+                    console.log("      [" + c.idx + "] author='" + c.author + "' isBot=" + c.isBot +
+                        " mentionsBot=" + c.mentionsBot + " authLinks=" + c.authLinkCount +
+                        " text=" + c.textSnippet.substring(0, 60));
+                });
+            }
+            console.log("    🔍 DEBUG: Current page URL: " + page.url());
+
+            if (!targetComment.target) {
+                console.log("    ⚠️  No unreplied comment found — skipping\n");
+                continue;
+            }
+
+            console.log("    ✅ Found target: " + targetComment.target.author + " (reason: " + targetComment.target.matchReason + ")");
+
+            var postTitle = await page.evaluate(function() {
+                var el = document.querySelector('h1, [class*="PostTitle"], [class*="postTitle"]');
+                return el ? el.textContent.trim() : 'Unknown Post';
+            });
+
+            console.log("    Replying to " + targetComment.target.author + ": " + targetComment.target.text.substring(0, 80) + "...");
+
+            var commentObj = { author: targetComment.target.author, text: targetComment.target.text, postTitle: postTitle, postCategory: 'General' };
+            var replyText = await generateCommentReply(commentObj);
+
+            console.log("─".repeat(50));
+            console.log("NOTIFICATION REPLY:");
+            console.log("─".repeat(50));
+            console.log(replyText);
+            console.log("─".repeat(50) + "\n");
+
+            await typeCommentReply(page, { author: targetComment.target.author, text: targetComment.target.text }, replyText);
+
+            summary.push({ type: "notif-comment", title: targetComment.target.author + "'s reply", author: targetComment.target.author, category_class: "notification" });
+            repliedPosts.add('notif|' + notif.href);
+            saveRepliedPosts(repliedPosts);
+            handled++;
+            await sleep(randomBetween(3000, 8000));
+
+        } catch (e) {
+            console.log("    ❌ Error handling notification: " + e.message + "\n");
+        }
+    }
+
+    console.log("🔔 Notification check complete — handled " + handled + " items\n");
+    return handled;
 }
 
 async function main() {
@@ -748,10 +1142,29 @@ async function main() {
                 } else if (item.type === "comment") {
                     console.log("💬 Comment by " + item.author + " on: " + item.postTitle);
                     console.log("  Text: " + item.text.substring(0, 200) + (item.text.length > 200 ? "..." : ""));
+                    console.log("  📍 Navigating to: " + item.postHref);
                     console.log("");
 
+                    // Force a real navigation even if we're already on this URL
+                    var currentUrl = page.url();
+                    if (currentUrl.split('?')[0] === item.postHref.split('?')[0]) {
+                        await page.goto('about:blank', { waitUntil: 'domcontentloaded', timeout: 5000 });
+                        await sleep(300);
+                    }
                     await page.goto(item.postHref, { waitUntil: "domcontentloaded", timeout: 30000 });
                     await sleep(2000);
+
+                    // Scroll down to load lazy comments
+                    for (var sc = 0; sc < 3; sc++) {
+                        await page.evaluate(function() { window.scrollTo(0, document.body.scrollHeight); });
+                        await sleep(800);
+                    }
+                    // Wait for comment elements to appear
+                    try {
+                        await page.waitForSelector('[class*="CommentItemContainer"], [class*="CommentOrReply"]', { timeout: 3000 });
+                    } catch (_) { /* comments may not exist */ }
+
+                    console.log("  📍 Now on: " + page.url());
 
                     var replyText = await generateCommentReply(item);
 
@@ -767,6 +1180,22 @@ async function main() {
                     summary.push({ type: "comment", title: item.author + "'s comment", author: item.author, category_class: item.category_class });
                     repliedPosts.add(item.commentId);
                     saveRepliedPosts(repliedPosts);
+                }
+
+                // Random coin flip: maybe check notifications between items
+                if (i < workItems.length - 1) {
+                    var coinFlip = Math.random() < 0.5;
+                    if (coinFlip) {
+                        var hasNotifs = await hasUnreadNotifications(page);
+                        if (hasNotifs) {
+                            console.log("\n🔔 Coin flip: TRUE + notifications detected — checking...\n");
+                            await handleNotifications(page, botName, repliedPosts, summary);
+                        } else {
+                            console.log("🔔 Coin flip: TRUE but no notifications — continuing\n");
+                        }
+                    } else {
+                        console.log("🔔 Coin flip: FALSE — skipping notification check\n");
+                    }
                 }
 
                 // Human-like delay between items

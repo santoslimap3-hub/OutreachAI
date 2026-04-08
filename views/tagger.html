@@ -613,8 +613,28 @@
             value: "brotherhood",
             color: "#4ECDC4"
         }, {
+            label: "Gratitude",
+            value: "gratitude",
+            color: "#4ECDC4"
+        }, {
+            label: "Chit-chat",
+            value: "chit-chat",
+            color: "#4ECDC4"
+        }, {
+            label: "Praise",
+            value: "praise",
+            color: "#4ECDC4"
+        }, {
             label: "Mystery / Teasing",
             value: "mystery-teasing",
+            color: "#4ECDC4"
+        }, {
+            label: "Questions",
+            value: "questions",
+            color: "#4ECDC4"
+        }, {
+            label: "Curiosity",
+            value: "curiosity",
             color: "#4ECDC4"
         }, {
             label: "Empathy",
@@ -640,6 +660,14 @@
             label: "Humor / Playful",
             value: "humor",
             color: "#2EC4B6"
+        }, {
+            label: "bonding / rapport",
+            value: "bonding-rapport",
+            color: "#2EC4B9"
+        }, {
+            label: "helpful / supportive",
+            value: "helpful-supportive",
+            color: "#3EC4B9"
         }, {
             label: "Self-Aggrandization",
             value: "self-aggrandization",
@@ -670,6 +698,18 @@
             label: "Value Delivery",
             value: "value-delivery",
             desc: "Teaching, sharing insights for free"
+        }, {
+            label: "Funneling",
+            value: "funneling",
+            desc: "Guiding prospects to my skool community"
+        }, {
+            label: "Info gathering",
+            value: "info-gathering",
+            desc: "Collecting information, asking questions"
+        }, {
+            label: "Lead Qualification",
+            value: "lead-qualification",
+            desc: "Do they have money? Do they have the problem? Are they the right fit?"
         }, {
             label: "Social Proof",
             value: "social-proof",
@@ -774,12 +814,13 @@
                                 intent: "",
                                 sales_stage: ""
                             };
-                            // Context is the message right before this reply (previous reply, or the comment)
-                            let ctx;
-                            if (ri === 0) {
-                                ctx = comment;
-                            } else {
-                                ctx = thread.replies[ri - 1];
+                            // Context is the most recent non-Scott message before this reply
+                            let ctx = comment;
+                            for (let k = ri - 1; k >= 0; k--) {
+                                if (!isScott(thread.replies[k].author)) {
+                                    ctx = thread.replies[k];
+                                    break;
+                                }
                             }
                             entries.push({
                                 post: post,

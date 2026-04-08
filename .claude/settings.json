@@ -10,7 +10,9 @@
       "Bash(ruby /home/santo/OutreachAi/tool_scripts/post_reply_only_filtering.rb)",
       "Bash(ruby -e:*)",
       "Bash(ruby tool_scripts/post_reply_only_filtering.rb)",
-      "Bash(ruby tool_scripts/convert_to_jsonl.rb)"
+      "Bash(ruby tool_scripts/convert_to_jsonl.rb)",
+      "Bash(python3 -c ':*)",
+      "Bash(node -e ':*)"
     ]
   }
 }

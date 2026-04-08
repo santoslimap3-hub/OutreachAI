@@ -52,50 +52,78 @@ async function collectAllPosts(page) {
     var pageNum = 1;
 
     while (true) {
-        var posts = await page.evaluate(function() {
-            var cards = [];
-            var wrappers = document.querySelectorAll('[class*="PostItemWrapper"]');
-            var base = window.location.origin + "/" + window.location.pathname.split("/")[1];
-            wrappers.forEach(function(el) {
-                var links = Array.from(el.querySelectorAll("a")).map(function(a) {
-                    return { href: a.href, text: a.textContent.trim() };
+        var posts = null;
+        for (var retries = 0; retries < 3; retries++) {
+            try {
+                await page.waitForLoadState("domcontentloaded", { timeout: 10000 });
+                posts = await page.evaluate(function() {
+                    var cards = [];
+                    var wrappers = document.querySelectorAll('[class*="PostItemWrapper"]');
+                    var base = window.location.origin + "/" + window.location.pathname.split("/")[1];
+                    wrappers.forEach(function(el) {
+                        var links = Array.from(el.querySelectorAll("a")).map(function(a) {
+                            return { href: a.href, text: a.textContent.trim() };
+                        });
+                        var profileLinks = links.filter(function(l) { return l.href.includes("/@"); });
+                        var author = "Unknown";
+                        for (var i = 0; i < profileLinks.length; i++) {
+                            if (!/^\d+$/.test(profileLinks[i].text)) { author = profileLinks[i].text; break; }
+                        }
+                        var postLink = links.find(function(l) {
+                            return l.href.startsWith(base + "/") && !l.href.includes("/@") && !l.href.includes("?c=") && !l.href.includes("?p=") && l.href.split("/").length > 4;
+                        });
+                        var categoryEl = el.querySelector('[class*="GroupFeedLinkLabel"]');
+                        var timeEl = el.querySelector('[class*="PostTimeContent"]');
+                        var contentEl = el.querySelector('[class*="PostItemCardContent"]');
+                        cards.push({
+                            author: author,
+                            title: postLink ? postLink.text : "",
+                            category: categoryEl ? categoryEl.textContent.trim() : "",
+                            timestamp: timeEl ? timeEl.textContent.trim().replace(".", "").trim() : "",
+                            postUrl: postLink ? postLink.href : null,
+                            body: contentEl ? contentEl.textContent.trim().substring(0, 1000) : "",
+                        });
+                    });
+                    return cards;
                 });
-                var profileLinks = links.filter(function(l) { return l.href.includes("/@"); });
-                var author = "Unknown";
-                for (var i = 0; i < profileLinks.length; i++) {
-                    if (!/^\d+$/.test(profileLinks[i].text)) { author = profileLinks[i].text; break; }
-                }
-                var postLink = links.find(function(l) {
-                    return l.href.startsWith(base + "/") && !l.href.includes("/@") && !l.href.includes("?c=") && !l.href.includes("?p=") && l.href.split("/").length > 4;
-                });
-                var categoryEl = el.querySelector('[class*="GroupFeedLinkLabel"]');
-                var timeEl = el.querySelector('[class*="PostTimeContent"]');
-                var contentEl = el.querySelector('[class*="PostItemCardContent"]');
-                cards.push({
-                    author: author,
-                    title: postLink ? postLink.text : "",
-                    category: categoryEl ? categoryEl.textContent.trim() : "",
-                    timestamp: timeEl ? timeEl.textContent.trim().replace(".", "").trim() : "",
-                    postUrl: postLink ? postLink.href : null,
-                    body: contentEl ? contentEl.textContent.trim().substring(0, 1000) : "",
-                });
-            });
-            return cards;
-        });
-        console.log("  Page " + pageNum + ": " + posts.length + " posts");
-        allPosts = allPosts.concat(posts);
-        var wentNext = await page.evaluate(function() {
-            var btns = document.querySelectorAll("button, a");
-            for (var i = 0; i < btns.length; i++) {
-                var txt = btns[i].textContent.trim();
-                if (txt === ">" || txt === "Next" || txt === "›") {
-                    if (!btns[i].disabled) { btns[i].click(); return true; }
+                break; // success, exit retry loop
+            } catch (e) {
+                console.log("  Page " + pageNum + " attempt " + (retries + 1) + " failed: " + e.message);
+                await sleep(2000);
+                if (retries === 2) {
+                    console.log("  Skipping page " + pageNum + " after 3 failures");
                 }
             }
-            return false;
-        });
+        }
+
+        if (posts && posts.length > 0) {
+            console.log("  Page " + pageNum + ": " + posts.length + " posts");
+            allPosts = allPosts.concat(posts);
+        } else if (posts && posts.length === 0) {
+            break; // no more posts
+        }
+
+        var wentNext = false;
+        try {
+            wentNext = await page.evaluate(function() {
+                var btns = document.querySelectorAll("button, a");
+                for (var i = 0; i < btns.length; i++) {
+                    var txt = btns[i].textContent.trim();
+                    if (txt === ">" || txt === "Next" || txt === "›") {
+                        if (!btns[i].disabled) { btns[i].click(); return true; }
+                    }
+                }
+                return false;
+            });
+        } catch (e) {
+            console.log("  Pagination click failed: " + e.message);
+            break;
+        }
         if (!wentNext) break;
-        await sleep(600);
+        try {
+            await page.waitForLoadState("networkidle", { timeout: 10000 });
+        } catch (_) {}
+        await sleep(1500);
         pageNum++;
         if (pageNum > 20) break;
     }
@@ -157,16 +185,22 @@ async function extractThreadedComments(page, postUrl, targetName) {
                 var txt = allClickable[i].textContent.trim();
                 if (txt.length > 30) continue;
                 if (/^see\s*more$/i.test(txt) || /^\.\.\.\s*see\s*more$/i.test(txt) || /^read\s*more$/i.test(txt) || /^show\s*more$/i.test(txt) || txt === "See more" || txt === "... See more") {
-                    try { allClickable[i].click();
-                        count++; } catch (e) {}
+                    try {
+                        allClickable[i].click();
+                        count++;
+                    } catch (e) {}
                 }
             }
             // Also try elements with class containing "SeeMore", "see-more", "ReadMore", "TruncatedText"
             var classTargets = document.querySelectorAll('[class*="SeeMore"], [class*="see-more"], [class*="seeMore"], [class*="ReadMore"], [class*="readMore"], [class*="read-more"], [class*="ShowMore"], [class*="showMore"], [class*="Truncat"], [class*="truncat"], [class*="Expand"], [class*="expand"]');
             classTargets.forEach(function(el) {
                 var t = el.textContent.trim();
-                if (t.length < 30) { try { el.click();
-                        count++; } catch (e) {} }
+                if (t.length < 30) {
+                    try {
+                        el.click();
+                        count++;
+                    } catch (e) {}
+                }
             });
             return count;
         });
@@ -194,13 +228,20 @@ async function extractThreadedComments(page, postUrl, targetName) {
         }
 
         function getContent(bubble) {
-            var text = bubble.textContent.trim();
+            // Use innerText to respect CSS visibility (avoids capturing hidden
+            // UI elements like emoji pickers, drag-drop accessibility text, etc.)
+            var text = bubble.innerText.trim();
             var author = getAuthor(bubble);
             var idx = text.indexOf(author);
             if (idx !== -1) text = text.substring(idx + author.length).trim();
             text = text.replace(/^[^\w@]*[·•]\s*\d+[hmd]\s*/i, "").trim();
             text = text.replace(/^[^\w@]*[·•]\s*\w+\s+\d+\s*/i, "").trim();
-            return text;
+            // Strip remaining UI artifacts
+            text = text.replace(/\n?\s*To pick up a draggable item[\s\S]*?press escape to cancel\.\s*/gm, '');
+            text = text.replace(/\s*Drop files here to upload[\s\S]*$/m, '');
+            text = text.replace(/\s*Recently UsedSmileys & People[\s\S]*$/m, '');
+            text = text.replace(/\d*\s*Reply\s*$/, '');
+            return text.trim();
         }
 
         function isTarget(author) {
