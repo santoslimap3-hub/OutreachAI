@@ -7,6 +7,11 @@ require("dotenv").config();
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
+// ── Classifier module ──────────────────────────────────────────────────────────
+// Determines tone_tags, intent, and sales_stage for each reply before generation.
+// Lives in ./classify/ — edit that folder to change classification behaviour.
+const classifyReply = require("./tag_classifier");
+
 const REPLIED_FILE = path.join(__dirname, "replied_posts.json");
 
 const CONFIG = {
@@ -395,19 +400,28 @@ async function alreadyCommented(page, botName) {
 }
 
 async function generateReply(post) {
-    console.log("🤖 Generating AI reply...\n");
+    console.log("🤖 Classifying post...");
 
-    // ── Build v5-format user prompt ──
+    // ── Step 1: Classify the post to determine tone/intent/stage ──
+    var tags = await classifyReply({
+        postAuthor: post.author,
+        postTitle:  post.title,
+        postBody:   post.body,
+        thread:     post.scrapedComments || [],
+    });
+    console.log("  🏷️  intent=" + tags.intent + " | stage=" + tags.sales_stage + " | tone=" + tags.tone_tags.join(", "));
+    if (tags.reasoning) console.log("  💭 " + tags.reasoning);
+    console.log("");
+
+    // ── Step 2: Build v5-format user prompt ──
     var userParts = [];
 
-    // POST section
     userParts.push("--- POST ---");
     userParts.push("Author: " + post.author);
     userParts.push("Title: " + post.title);
     userParts.push("");
     userParts.push(post.body);
 
-    // COMMENTS section (if available from scrape)
     if (post.scrapedComments && post.scrapedComments.length > 0) {
         userParts.push("");
         userParts.push("--- COMMENTS ---");
@@ -418,13 +432,73 @@ async function generateReply(post) {
         }
     }
 
-    var messages = [{
-        role: "system",
-        content: "You are Jack Walford, appointment setter for Answer 42 and Self-Improvement Nation on Skool.\n\nYour mentor and CEO is Scott Northwolf. You funnel qualified leads to book calls with him.\n\nVOICE: Brotherhood energy. Raw, direct, high-energy. Never corporate. Use \"brother\", \"bro\", \"king\". Short punchy sentences. No bullet points, no dashes. Speak like a man who's been through darkness and found the light. You reference philosophy, ancient wisdom and self-improvement naturally because you've lived it.\n\nRULES: Never be needy. Never overexplain. Never use dashes or bullet formatting in messages. Create intrigue. You don't need them, they need what you have. Be the sun, not the chaser.\n\nSITUATION: Replying to a Skool post.\nSTAGE: nurture \u2014 You're warming them up. No selling. Build trust, drop value, create intrigue.\nINTENT: engagement-nurture \u2014 Keep them engaged and coming back. Drop value, spark curiosity, make them want to interact more.\nTONE: brotherhood (talk like a brother in arms), motivational (light a fire under them)"
-    }, {
-        role: "user",
-        content: userParts.join("\n")
-    }];
+    // ── Step 3: Build system prompt with classified tags injected ──
+    var toneDescription = tags.tone_tags.map(function(t) {
+        var descriptions = {
+            "hype":                 "bring maximum energy and excitement",
+            "brotherhood":          "talk like a brother in arms",
+            "motivational":         "light a fire under them",
+            "authority":            "speak from a position of undeniable expertise",
+            "direct":               "be blunt, no fluff, get to the point fast",
+            "casual":               "be relaxed, low-key, like texting a friend",
+            "self-aggrandization":  "reference your wins naturally to inspire aspiration",
+            "teasing-future-value": "hint at something big without fully revealing it",
+            "praise":               "specifically recognise what they did or said",
+            "humor":                "be light and funny without being corny",
+            "empathy":              "briefly acknowledge their struggle before moving on",
+            "storytelling":         "use a short personal story to make the point land",
+            "vulnerability":        "briefly open up about your own challenges",
+            "tough-love":           "be honest even if it stings — said with care",
+            "mystery-teasing":      "create intrigue around your methods or lifestyle",
+            "chit-chat":            "just be a human, no agenda",
+            "bonding-rapport":      "build a real personal connection",
+            "gratitude":            "express genuine thanks",
+            "curiosity":            "ask because you actually want to know",
+        };
+        return t + " (" + (descriptions[t] || t) + ")";
+    }).join(", ");
+
+    var intentDescriptions = {
+        "acknowledgement":    "Acknowledge what they said. Keep it short, warm, no agenda. Just let them feel seen.",
+        "engagement-nurture": "Keep them engaged and coming back. Drop value, spark curiosity, make them want to interact more.",
+        "community-building": "Reinforce the identity and culture of Self-Improvement Nation. This is who we are.",
+        "authority-proofing": "Naturally position yourself as THE expert. Drop credentials or results without being asked.",
+        "value-delivery":     "Give one specific, actionable insight or framework that is immediately useful.",
+        "close-to-call":      "Invite them to book a call or DM. Casual, never pushy. They've shown they're ready.",
+        "social-proof":       "Highlight a win, transformation, or result that creates desire to be part of this.",
+        "redirect":           "Move the conversation toward Scott's core message or offer. Smooth, not abrupt.",
+        "info-gathering":     "Ask a genuine question to learn more about their situation or goals.",
+        "lead-qualification": "Probe to find out if they're a coach or aspiring coach who could buy.",
+        "pain-agitation":     "Highlight or amplify their problem to make the solution feel urgent and necessary.",
+        "objection-handling": "Address their doubt or hesitation directly and flip it into a reason to move forward.",
+        "funneling":          "Point them toward Scott's community, program, or resources — naturally.",
+    };
+    var stageDescriptions = {
+        "awareness":  "They just found Scott. Make a great first impression. No selling.",
+        "engagement": "They're active but not warm yet. Deepen the relationship.",
+        "nurture":    "They trust Scott and are learning. Stay top of mind, deliver value.",
+        "ask":        "They're ready. Move them toward a call.",
+    };
+
+    var systemPrompt = [
+        "You are Jack Walford, appointment setter for Answer 42 and Self-Improvement Nation on Skool.",
+        "",
+        "Your mentor and CEO is Scott Northwolf. You funnel qualified leads to book calls with him.",
+        "",
+        "VOICE: Brotherhood energy. Raw, direct, high-energy. Never corporate. Use \"brother\", \"bro\", \"king\". Short punchy sentences. No bullet points, no dashes. Speak like a man who's been through darkness and found the light. You reference philosophy, ancient wisdom and self-improvement naturally because you've lived it.",
+        "",
+        "RULES: Never be needy. Never overexplain. Never use dashes or bullet formatting in messages. Create intrigue. You don't need them, they need what you have. Be the sun, not the chaser.",
+        "",
+        "SITUATION: Replying to a Skool post.",
+        "STAGE: " + tags.sales_stage + " \u2014 " + (stageDescriptions[tags.sales_stage] || tags.sales_stage),
+        "INTENT: " + tags.intent + " \u2014 " + (intentDescriptions[tags.intent] || tags.intent),
+        "TONE: " + toneDescription,
+    ].join("\n");
+
+    var messages = [
+        { role: "system", content: systemPrompt },
+        { role: "user",   content: userParts.join("\n") + "\n\nWrite a short, natural reply to this post." },
+    ];
 
     console.log("═══════════════ PROMPT BEING SENT ═══════════════");
     messages.forEach(function(m) {
@@ -891,21 +965,32 @@ function selectComments(classifiedComments) {
 }
 
 async function generateCommentReply(comment) {
-    console.log("🤖 Generating reply to comment by " + comment.author + "...\n");
+    console.log("🤖 Classifying comment by " + comment.author + "...");
 
-    // ── Build v5-format user prompt ──
+    // ── Step 1: Classify the comment to determine tone/intent/stage ──
+    var tags = await classifyReply({
+        postAuthor:    comment.postAuthor  || "Unknown",
+        postTitle:     comment.postTitle   || "Unknown",
+        postBody:      comment.postBody    || "",
+        commentAuthor: comment.author,
+        commentText:   comment.text,
+        thread:        comment.thread      || [],
+    });
+    console.log("  🏷️  intent=" + tags.intent + " | stage=" + tags.sales_stage + " | tone=" + tags.tone_tags.join(", "));
+    if (tags.reasoning) console.log("  💭 " + tags.reasoning);
+    console.log("");
+
+    // ── Step 2: Build v5-format user prompt ──
     var userParts = [];
 
-    // POST section — include post context if available
     userParts.push("--- POST ---");
     userParts.push("Author: " + (comment.postAuthor || "Unknown"));
-    userParts.push("Title: " + (comment.postTitle || "Unknown"));
+    userParts.push("Title: " + (comment.postTitle   || "Unknown"));
     if (comment.postBody) {
         userParts.push("");
         userParts.push(comment.postBody);
     }
 
-    // THREAD section — include the comment thread if available
     if (comment.thread && comment.thread.length > 0) {
         userParts.push("");
         userParts.push("--- THREAD ---");
@@ -915,40 +1000,82 @@ async function generateCommentReply(comment) {
             userParts.push(prefix + "[" + entry.author + "]: " + entry.text);
         }
     } else {
-        // Minimal thread: just the comment we're replying to
         userParts.push("");
         userParts.push("--- THREAD ---");
         userParts.push("[" + comment.author + "]: " + comment.text.substring(0, 300));
     }
 
-    // REPLY TO section
     userParts.push("");
     userParts.push("--- REPLY TO ---");
     userParts.push("[" + comment.author + "]: " + comment.text.substring(0, 300));
 
-    // Map classification to v5-style STAGE/INTENT/TONE
-    var stage, intent, tones;
-    if (comment.category_class === 'icp') {
-        stage = "nurture \u2014 You're warming them up. No selling. Build trust, drop value, create intrigue. Make them curious about who's behind all this knowledge.";
-        intent = "lead-qualification \u2014 Figure out if they're a fit. Are they a coach or aspiring coach? Do they have drive? Are they action-takers or talkers?";
-        tones = "hype (bring maximum energy and excitement), brotherhood (talk like a brother in arms), motivational (light a fire under them), mystery-teasing (hint at something bigger without revealing it)";
-    } else if (comment.category_class === 'advice') {
-        stage = "nurture \u2014 Build trust, drop value, create intrigue.";
-        intent = "engagement-nurture \u2014 Keep them engaged and coming back. Drop value, spark curiosity, make them want to interact more.";
-        tones = "motivational (light a fire under them), brotherhood (talk like a brother in arms)";
-    } else {
-        stage = "nurture \u2014 Build trust, drop value.";
-        intent = "acknowledgement \u2014 Acknowledge what they said. Keep it short, warm, no agenda. Just let them feel seen.";
-        tones = "brotherhood (talk like a brother in arms), casual (keep it loose and relaxed)";
-    }
+    // ── Step 3: Build system prompt with classified tags injected ──
+    var toneDescriptions = {
+        "hype":                 "bring maximum energy and excitement",
+        "brotherhood":          "talk like a brother in arms",
+        "motivational":         "light a fire under them",
+        "authority":            "speak from a position of undeniable expertise",
+        "direct":               "be blunt, no fluff, get to the point fast",
+        "casual":               "be relaxed, low-key, like texting a friend",
+        "self-aggrandization":  "reference your wins naturally to inspire aspiration",
+        "teasing-future-value": "hint at something big without fully revealing it",
+        "praise":               "specifically recognise what they did or said",
+        "humor":                "be light and funny without being corny",
+        "empathy":              "briefly acknowledge their struggle before moving on",
+        "storytelling":         "use a short personal story to make the point land",
+        "vulnerability":        "briefly open up about your own challenges",
+        "tough-love":           "be honest even if it stings — said with care",
+        "mystery-teasing":      "create intrigue around your methods or lifestyle",
+        "chit-chat":            "just be a human, no agenda",
+        "bonding-rapport":      "build a real personal connection",
+        "gratitude":            "express genuine thanks",
+        "curiosity":            "ask because you actually want to know",
+    };
+    var intentDescriptions = {
+        "acknowledgement":    "Acknowledge what they said. Keep it short, warm, no agenda. Just let them feel seen.",
+        "engagement-nurture": "Keep them engaged and coming back. Drop value, spark curiosity, make them want to interact more.",
+        "community-building": "Reinforce the identity and culture of Self-Improvement Nation. This is who we are.",
+        "authority-proofing": "Naturally position yourself as THE expert. Drop credentials or results without being asked.",
+        "value-delivery":     "Give one specific, actionable insight or framework that is immediately useful.",
+        "close-to-call":      "Invite them to book a call or DM. Casual, never pushy. They've shown they're ready.",
+        "social-proof":       "Highlight a win, transformation, or result that creates desire to be part of this.",
+        "redirect":           "Move the conversation toward Scott's core message or offer. Smooth, not abrupt.",
+        "info-gathering":     "Ask a genuine question to learn more about their situation or goals.",
+        "lead-qualification": "Probe to find out if they're a coach or aspiring coach who could buy.",
+        "pain-agitation":     "Highlight or amplify their problem to make the solution feel urgent and necessary.",
+        "objection-handling": "Address their doubt or hesitation directly and flip it into a reason to move forward.",
+        "funneling":          "Point them toward Scott's community, program, or resources — naturally.",
+    };
+    var stageDescriptions = {
+        "awareness":  "They just found Scott. Make a great first impression. No selling.",
+        "engagement": "They're active but not warm yet. Deepen the relationship.",
+        "nurture":    "They trust Scott and are learning. Stay top of mind, deliver value.",
+        "ask":        "They're ready. Move them toward a call.",
+    };
 
-    var messages = [{
-        role: "system",
-        content: "You are Jack Walford, appointment setter for Answer 42 and Self-Improvement Nation on Skool.\n\nYour mentor and CEO is Scott Northwolf. You funnel qualified leads to book calls with him.\n\nVOICE: Brotherhood energy. Raw, direct, high-energy. Never corporate. Use \"brother\", \"bro\", \"king\". Short punchy sentences. No bullet points, no dashes. Speak like a man who's been through darkness and found the light. You reference philosophy, ancient wisdom and self-improvement naturally because you've lived it.\n\nRULES: Never be needy. Never overexplain. Never use dashes or bullet formatting in messages. Create intrigue. You don't need them, they need what you have. Be the sun, not the chaser.\n\nSITUATION: Replying to a Skool post comment.\nSTAGE: " + stage + "\nINTENT: " + intent + "\nTONE: " + tones
-    }, {
-        role: "user",
-        content: userParts.join("\n")
-    }];
+    var toneStr = tags.tone_tags.map(function(t) {
+        return t + " (" + (toneDescriptions[t] || t) + ")";
+    }).join(", ");
+
+    var systemPrompt = [
+        "You are Jack Walford, appointment setter for Answer 42 and Self-Improvement Nation on Skool.",
+        "",
+        "Your mentor and CEO is Scott Northwolf. You funnel qualified leads to book calls with him.",
+        "",
+        "VOICE: Brotherhood energy. Raw, direct, high-energy. Never corporate. Use \"brother\", \"bro\", \"king\". Short punchy sentences. No bullet points, no dashes. Speak like a man who's been through darkness and found the light. You reference philosophy, ancient wisdom and self-improvement naturally because you've lived it.",
+        "",
+        "RULES: Never be needy. Never overexplain. Never use dashes or bullet formatting in messages. Create intrigue. You don't need them, they need what you have. Be the sun, not the chaser.",
+        "",
+        "SITUATION: Replying to a Skool post comment.",
+        "STAGE: " + tags.sales_stage + " \u2014 " + (stageDescriptions[tags.sales_stage] || tags.sales_stage),
+        "INTENT: " + tags.intent + " \u2014 " + (intentDescriptions[tags.intent] || tags.intent),
+        "TONE: " + toneStr,
+    ].join("\n");
+
+    var messages = [
+        { role: "system", content: systemPrompt },
+        { role: "user",   content: userParts.join("\n") + "\n\nWrite a short, natural reply to this comment." },
+    ];
 
     console.log("═══════════════ PROMPT BEING SENT ═══════════════");
     messages.forEach(function(m) {
