@@ -6,24 +6,31 @@ require("dotenv").config();
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
+// ── MOTHER AI system ───────────────────────────────────────────────────────────
+// Same classify → tag-aware prompt → fine-tuned model pipeline as auto_reply.js
+// Extended with the 8-step DM appointment setting workflow stage.
+const classifyDM = require("./classify/dm_classifier");
+const sessionLog = require("./logger/session_log");
+const { INTENTS: INTENT_DEFS, SALES_STAGES: STAGE_DEFS } = require("./classify/tags");
+
 const REPLIED_DMS_FILE = path.join(__dirname, "replied_dms.json");
 
 const CONFIG = {
     email: process.env.SKOOL_EMAIL,
     password: process.env.SKOOL_PASSWORD,
     headless: false,
-    dryRun: true, // type DM but don't send (for testing)
+    dryRun: false, // type DM but don't send (for testing)
     // Active period: bot responds to DMs
-    activeMinMs: 10 * 60 * 1000,   // 10 minutes
-    activeMaxMs: 60 * 60 * 1000,   // 1 hour
+    activeMinMs: 10 * 60 * 1000, // 10 minutes
+    activeMaxMs: 60 * 60 * 1000, // 1 hour
     // Inactive period: bot ignores DMs
     inactiveMinMs: 20 * 60 * 1000, // 20 minutes
     inactiveMaxMs: 90 * 60 * 1000, // 1.5 hours
     // Random delay before replying during active period
-    replyDelayMinMs: 0,            // 0 seconds
-    replyDelayMaxMs: 60 * 1000,    // 60 seconds
+    replyDelayMinMs: 0, // 0 seconds
+    replyDelayMaxMs: 60 * 1000, // 60 seconds
     // How often to poll for new messages during active period
-    pollIntervalMs: 15 * 1000,     // 15 seconds between polls
+    pollIntervalMs: 15 * 1000, // 15 seconds between polls
 };
 
 function randomBetween(min, max) {
@@ -65,7 +72,45 @@ function loadRepliedDMs() {
 }
 
 function saveRepliedDMs(repliedSet) {
-    fs.writeFileSync(REPLIED_DMS_FILE, JSON.stringify(Array.from(repliedSet), null, 2));
+    // Atomic write: write to .tmp then rename so Ctrl+C can never corrupt the file
+    var tmp = REPLIED_DMS_FILE + '.tmp';
+    fs.writeFileSync(tmp, JSON.stringify(Array.from(repliedSet), null, 2));
+    fs.renameSync(tmp, REPLIED_DMS_FILE);
+}
+
+// ─── DISMISS OVERLAYS ────────────────────────────────────
+// Skool's DropdownBackground overlay intercepts all clicks when a menu is open.
+// Call this before any click operation to guarantee a clean state.
+
+async function dismissOverlays(page) {
+    // Run JS directly inside the browser to click the backdrop —
+    // this bypasses Playwright's own interception detection entirely.
+    await page.evaluate(function() {
+        var selectors = [
+            '[class*="DropdownBackground"]',
+            '[class*="Backdrop"]',
+            '[class*="backdrop"]',
+            '[class*="Overlay"]',
+        ];
+        selectors.forEach(function(sel) {
+            document.querySelectorAll(sel).forEach(function(el) { el.click(); });
+        });
+        // Fire Escape inside the page too
+        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    });
+    await sleep(250);
+
+    // Playwright-level Escape as belt-and-suspenders
+    await page.keyboard.press('Escape');
+    await sleep(200);
+
+    // Wait until the DropdownBackground is gone from the DOM
+    try {
+        await page.waitForFunction(function() {
+            return document.querySelectorAll('[class*="DropdownBackground"]').length === 0;
+        }, { timeout: 3000 });
+    } catch (e) { /* wasn't there or already gone */ }
+    await sleep(150);
 }
 
 // ─── LOGIN ───────────────────────────────────────────────
@@ -73,21 +118,76 @@ function saveRepliedDMs(repliedSet) {
 async function login(page) {
     console.log("Logging in...");
     await page.goto("https://www.skool.com/login", { waitUntil: "networkidle" });
-    await sleep(800);
-    await page.fill('input[name="email"], input[type="email"]', CONFIG.email);
-    await page.fill('input[name="password"], input[type="password"]', CONFIG.password);
-    await page.click('button[type="submit"]');
-    await sleep(3000);
-    if (page.url().includes("login")) throw new Error("Login failed — check credentials");
+    await sleep(1000);
+
+    // Dump page state to diagnose login issues
+    var pageState = await page.evaluate(function() {
+        var inputs = Array.from(document.querySelectorAll('input')).map(function(el) {
+            return { type: el.type, name: el.name, id: el.id, placeholder: el.placeholder };
+        });
+        var buttons = Array.from(document.querySelectorAll('button')).map(function(el) {
+            return { type: el.type, text: el.textContent.trim().substring(0, 40), class: (el.className||'').substring(0, 60) };
+        });
+        return { inputs: inputs, buttons: buttons, url: window.location.href };
+    });
+    console.log("Login page inputs:", JSON.stringify(pageState.inputs));
+    console.log("Login page buttons:", JSON.stringify(pageState.buttons));
+
+    // Click + type (not fill) so React's onChange events fire correctly
+    await page.click('#email');
+    await sleep(200);
+    await page.keyboard.type(CONFIG.email, { delay: 40 });
+    await sleep(300);
+    await page.click('#password');
+    await sleep(200);
+    await page.keyboard.type(CONFIG.password, { delay: 40 });
+    await sleep(500);
+
+    // Try submit button — multiple selectors in priority order
+    var submitted = false;
+    var btnSelectors = [
+        'button[type="submit"]',
+        'form button',
+        'button:has-text("Sign in")',
+        'button:has-text("Log in")',
+        'button:has-text("Continue")',
+        '[class*="Submit"]',
+        '[class*="LoginButton"]',
+    ];
+    for (var bi = 0; bi < btnSelectors.length; bi++) {
+        try {
+            var btn = await page.$(btnSelectors[bi]);
+            if (btn) {
+                console.log("Clicking submit button with selector:", btnSelectors[bi]);
+                await btn.click();
+                submitted = true;
+                break;
+            }
+        } catch (e) { /* try next */ }
+    }
+    if (!submitted) throw new Error("Could not find submit button on login page");
+
+    // Wait for navigation away from login page (up to 20s)
+    try {
+        await page.waitForNavigation({ timeout: 20000, waitUntil: 'domcontentloaded' });
+    } catch (e) { /* navigation may have already completed */ }
+
+    if (page.url().includes('/login')) {
+        console.log("Still on login page. Waiting 10s so you can see the browser...");
+        await sleep(10000);
+        var pageText = await page.evaluate(function() {
+            return document.body.innerText.substring(0, 400);
+        });
+        throw new Error("Login failed. Page text: " + pageText);
+    }
     console.log("Logged in");
 
+    // Navigate home and try to read the bot's display name from the page
+    // without opening a dropdown — avoids leaving overlay cruft behind
     await page.goto("https://www.skool.com", { waitUntil: "domcontentloaded" });
     await sleep(3000);
-    var avatarBtn = await page.$('[class*="UserAvatar"], [class*="avatar"], img[class*="Avatar"]');
-    if (avatarBtn) {
-        await avatarBtn.click();
-        await sleep(800);
-    }
+
+    // Try to get name without opening the dropdown first (from existing DOM links)
     var botName = await page.evaluate(function() {
         var links = document.querySelectorAll('a[href*="/@"]');
         for (var i = 0; i < links.length; i++) {
@@ -96,8 +196,25 @@ async function login(page) {
         }
         return "";
     });
-    await page.keyboard.press('Escape');
-    await sleep(300);
+
+    // Only open the avatar dropdown if we couldn't get the name passively
+    if (!botName) {
+        var avatarBtn = await page.$('[class*="UserAvatar"], [class*="avatar"], img[class*="Avatar"]');
+        if (avatarBtn) {
+            await avatarBtn.click();
+            await sleep(800);
+            botName = await page.evaluate(function() {
+                var links = document.querySelectorAll('a[href*="/@"]');
+                for (var i = 0; i < links.length; i++) {
+                    var text = links[i].textContent.trim();
+                    if (text.length > 1 && !text.match(/^\d+$/)) return text;
+                }
+                return "";
+            });
+            // Force-close the dropdown completely before continuing
+            await dismissOverlays(page);
+        }
+    }
 
     console.log("Bot account name: " + (botName || "(unknown)") + "\n");
     return botName;
@@ -112,7 +229,8 @@ async function openChatPanel(page) {
         '[class*="ChatIcon"]'
     );
     if (chatBtn) {
-        await chatBtn.click();
+        // force:true bypasses any overlay still in the way as a last resort
+        await chatBtn.click({ force: true });
         return true;
     }
 
@@ -120,7 +238,7 @@ async function openChatPanel(page) {
     for (var i = 0; i < navItems.length; i++) {
         var cls = await navItems[i].getAttribute('class') || '';
         if (/chat|message/i.test(cls)) {
-            await navItems[i].click();
+            await navItems[i].click({ force: true });
             return true;
         }
     }
@@ -297,7 +415,7 @@ async function clickConversation(page, targetIndex) {
 async function readFullConversation(page, botName) {
     return await page.evaluate(function(args) {
         var botDisplayName = args.botDisplayName;
-        var result = { partner: null, messages: [], lastSender: null };
+        var result = { partner: null, messages: [], lastSender: null, debugInfo: [] };
 
         // Get partner name from input placeholder ("Message Sulav")
         var allInputs = document.querySelectorAll('textarea, [contenteditable="true"], input[type="text"]');
@@ -332,20 +450,78 @@ async function readFullConversation(page, botName) {
             '[class*="MessageRow"]',
         ];
         var bubbles = [];
+        var usedSelector = '(none)';
         for (var s = 0; s < msgSelectors.length; s++) {
             bubbles = document.querySelectorAll(msgSelectors[s]);
-            if (bubbles.length > 0) break;
+            if (bubbles.length > 0) { usedSelector = msgSelectors[s]; break; }
         }
 
+        if (bubbles.length === 0) {
+            result.debugInfo.push({ error: 'no bubbles found' });
+            return result;
+        }
+
+        // ── NOTE: Skool DMs show ALL messages left-aligned with the sender's name ──
+        // Position-based detection doesn't work here. Instead we extract the author
+        // name from the DOM for every message and compare against the partner's name.
+        // In a 2-person DM: if author != partner → it's the bot.
+
+        result.debugInfo.push({
+            selector: usedSelector,
+            bubbleCount: bubbles.length,
+            partner: result.partner,
+        });
+
+        var partnerLow = result.partner ? result.partner.toLowerCase() : null;
         var lastAuthor = null;
+
         for (var b = 0; b < bubbles.length; b++) {
             var bubble = bubbles[b];
 
-            // Get author from link or name element
-            var authorEl = bubble.querySelector('a[href*="/@"], [class*="UserNameText"]');
-            var author = authorEl ? authorEl.textContent.trim() : null;
-            if (!author) author = lastAuthor; // consecutive messages omit the name
-            if (author) lastAuthor = author;
+            // Try multiple selectors to extract the sender's name
+            var nameSelectors = [
+                'a[href*="/@"]',
+                '[class*="UserNameText"]',
+                '[class*="AuthorName"]',
+                '[class*="SenderName"]',
+                '[class*="UserName"]',
+                '[class*="MemberName"]',
+                '[class*="DisplayName"]',
+            ];
+            var foundName = null;
+            for (var ns = 0; ns < nameSelectors.length; ns++) {
+                var nameEl = bubble.querySelector(nameSelectors[ns]);
+                if (nameEl) {
+                    var nm = nameEl.textContent.trim();
+                    if (nm && nm.length > 1 && nm.length < 60) { foundName = nm; break; }
+                }
+            }
+
+            // Fallback: if bubble text starts with the known partner name
+            if (!foundName && partnerLow) {
+                var rawText = bubble.textContent.trim();
+                if (rawText.toLowerCase().startsWith(partnerLow)) foundName = result.partner;
+            }
+
+            var author;
+            if (foundName) { author = foundName; lastAuthor = foundName; }
+            else            { author = lastAuthor; }
+
+            // Determine role: partner vs bot.
+            // The placeholder gives only the first name ("Message Scott" → "Scott").
+            // The DOM name may use non-breaking spaces (\u00a0) between first/last name,
+            // so we split on any whitespace and compare first words.
+            var role;
+            if (author && partnerLow) {
+                var authorFirstWord = author.toLowerCase().split(/\s+/)[0];
+                var partnerFirstWord = partnerLow.split(/\s+/)[0];
+                var isPartner = authorFirstWord === partnerFirstWord;
+                role = isPartner ? 'partner' : 'bot';
+            } else if (author === botDisplayName) {
+                role = 'bot';
+            } else {
+                role = 'partner'; // safe default
+            }
 
             // Get message text
             var msgTextEl = bubble.querySelector('[class*="MessageBody"], [class*="TextContent"], p');
@@ -355,8 +531,17 @@ async function readFullConversation(page, botName) {
             if (author && msgText.startsWith(author)) msgText = msgText.substring(author.length).trim();
             msgText = msgText.replace(/^\d+[dhms]\s*/i, '').replace(/^\d{1,2}:\d{2}\s*(am|pm)\s*/i, '').trim();
 
+            // Debug: capture first 6 bubbles
+            if (b < 6) {
+                result.debugInfo.push({
+                    idx: b,
+                    foundName: foundName,
+                    role: role,
+                    text: (msgText || '').substring(0, 50),
+                });
+            }
+
             if (msgText && author) {
-                var role = (author === botDisplayName) ? 'bot' : 'partner';
                 result.messages.push({ role: role, author: author, text: msgText });
             }
         }
@@ -369,28 +554,122 @@ async function readFullConversation(page, botName) {
     }, { botDisplayName: botName });
 }
 
-// ─── GENERATE DM REPLY (full context) ────────────────────
+// ─── DM WORKFLOW STAGE INSTRUCTIONS ──────────────────────────────────────────
+// What Scott should specifically DO at each stage of the appointment setting flow.
+
+var DM_STAGE_INSTRUCTIONS = {
+    "connect": "This is your OPENING MOVE. Reference something SPECIFIC — their post, a shared interest, something they mentioned. Open with genuine curiosity. Never mention your program. Never pitch. Just start a real human conversation.",
+
+    "gather-intel": "ASK 1-2 targeted questions to understand their situation. Learn: what kind of coaching they do, where they're stuck, how long they've been at it. LISTEN MODE — do not offer solutions or hint at your program yet. Make them feel heard.",
+
+    "share-authority": "BUILD TRUST through your story. Share something personal, vulnerable, and real — a moment you struggled, a breakthrough you had, a result you achieved. Make them feel you've walked their path. NO pitching — pure human connection.",
+
+    "frame-outcome": "HELP THEM SEE THE GAP. Guide them toward defining their dream outcome. Ask what their business would look like if everything worked. Make the distance between where they are and where they want to be feel real and worth solving.",
+
+    "offer-call": "INVITE THEM TO A CALL. Frame it as a free 30-minute diagnostic — you just want to understand their situation, zero pressure, no pitch. Something like: 'Let me get a clear picture of where you're at on a quick call — no pitch, just want to understand your situation.'",
+
+    "pre-qualify": "GET REAL ON INVESTMENT. Ask directly but casually — are they serious about making a change? If the fit is right, can they invest? You only work with people who are committed. Be warm but honest — this saves both of you time.",
+
+    "send-calendly": "THEY'RE READY. Send the Calendly link confidently. Keep it warm and direct. Tell them to pick a time and you'll see them there. No over-explaining. Short, energetic, done.",
+
+    "nurture-free": "THEY'RE NOT READY — and that's fine. Point them toward free resources: your Skool community, your content, your free trainings. Stay warm. Keep the door wide open. Plant seeds for when the time is right.",
+};
+
+// ─── BUILD DM REPLY SYSTEM PROMPT ────────────────────────────────────────────
+// The MOTHER AI equivalent for DMs: uses classified tags to create a
+// stage-aware, tone-specific system prompt for each individual conversation.
+
+function buildDMReplySystemPrompt(tags, partnerName) {
+    var stageInstruction = tags.dm_stage ?
+        (DM_STAGE_INSTRUCTIONS[tags.dm_stage] || "Continue the conversation naturally.") :
+        "This is a non-sales conversation. Be warm, natural, and human.";
+
+    var intentDesc = INTENT_DEFS[tags.intent] || tags.intent;
+    var stageDesc = STAGE_DEFS[tags.sales_stage] || tags.sales_stage;
+
+    return [
+        "You are Scott Northwolf — founder of Self-Improvement Nation, creator of the Reverse Engineered $10K Method.",
+        "You help self-improvement coaches go from $0 to $10K/month in 42 days, or they don't pay.",
+        "",
+        "VOICE: Brotherhood energy. Raw, direct, high-conviction. Never corporate. Use 'brother', 'bro', 'king' where natural.",
+        "Short punchy sentences. No bullet points. No dashes. No overexplaining.",
+        "You are the SUN — always in a good mood, always giving value. Speaking to you is a privilege.",
+        "Use '. . .' for ellipses when you want a dramatic pause. Use '! ! !' for real emphasis.",
+        "Never be needy. Never chase. Create intrigue.",
+        "",
+        "SITUATION: Direct message with " + partnerName + ".",
+        "",
+        "WORKFLOW STAGE: " + (tags.dm_stage || "non-sales") + " — " + stageInstruction,
+        "",
+        "FUNNEL STAGE: " + tags.sales_stage + " — " + stageDesc,
+        "INTENT: " + tags.intent + " — " + intentDesc,
+        "TONE: " + tags.tone_tags.join(", "),
+        "",
+        "Write ONE reply only. No explanations. No labels. Just the message itself.",
+        "",
+        "IMPORTANT: If the message genuinely does not deserve a reply — e.g. it's a one-word reaction ('lol', 'ok', '👍'), a low-effort meme with no question, pure spam, or the conversation has naturally closed — output exactly this and nothing else: [NO_REPLY]",
+        "Only use [NO_REPLY] when a real human would leave it on read. When in doubt, reply.",
+    ].join("\n");
+}
+
+// ─── GENERATE DM REPLY — MOTHER AI PIPELINE ──────────────────────────────────
+// 1. Classify the conversation  → dm_stage, tone_tags, intent, sales_stage
+// 2. Build tag-aware system prompt  → stage-specific instructions
+// 3. Generate reply via fine-tuned model
+// 4. Log everything to session log for review
 
 async function generateDMReply(partnerName, messages) {
-    console.log("    Generating reply to " + partnerName + " (" + messages.length + " messages in context)...");
+    console.log("    Classifying conversation with " + partnerName + "...");
 
-    var conversationLines = messages.map(function(m) {
-        var label = m.role === 'bot' ? 'You' : m.author;
+    // ── Step 1: Classify ──────────────────────────────────────────────────────
+    var tags = await classifyDM(partnerName, messages);
+    console.log("    Tags → stage:" + (tags.dm_stage || "null") +
+        " | intent:" + tags.intent +
+        " | sales:" + tags.sales_stage +
+        " | tone:" + tags.tone_tags.join(","));
+    console.log("    Reasoning: " + tags.reasoning);
+
+    // ── Step 2: Build system prompt ───────────────────────────────────────────
+    var systemPrompt = buildDMReplySystemPrompt(tags, partnerName);
+
+    // ── Step 3: Format conversation for user message ──────────────────────────
+    var conversationLines = messages.slice(-8).map(function(m) {
+        var label = m.role === "bot" ? "Scott" : partnerName;
         return label + ": " + m.text;
     }).join("\n");
 
+    var userMessage = "Full conversation:\n\n" + conversationLines + "\n\nWrite Scott's next reply.";
+
+    // ── Step 4: Generate reply ────────────────────────────────────────────────
+    console.log("    " + "─".repeat(50));
+    console.log("    SYSTEM PROMPT:");
+    console.log(systemPrompt.split("\n").map(function(l){ return "      " + l; }).join("\n"));
+    console.log("    USER MESSAGE:");
+    console.log(userMessage.split("\n").map(function(l){ return "      " + l; }).join("\n"));
+    console.log("    " + "─".repeat(50));
+    console.log("    Generating reply (" + messages.length + " messages in context)...");
     var completion = await openai.chat.completions.create({
         model: process.env.OPENAI_MODEL || "gpt-4o",
         max_tokens: 300,
-        messages: [{
-            role: "system",
-            content: "You are Scott Northwolf, founder of Self-Improvement Nation. You help self-improvement coaches go from $0 to $10K/month in 42 days with the 'Reverse Engineered $10K Method' or they don't pay.\n\nYou are replying to a direct message. Be warm, personal, and direct. Keep it concise.\n\nWriting style:\nBe concise. No overexplaining. Focus on actionable steps, logical frameworks and motivational language with ancient sounding wording when appropriate.\nNever use dashes or bullet point formatting.\nCreate mystery with bold statements and loose 007 style comments.\nNever be needy or chase anyone. You are the SUN, always giving value, always in a good mood. Speaking to you is a privilege.\nUse '. . .' for ellipses and '! ! !' for emphasis. Never use generic AI patterns."
-        }, {
-            role: "user",
-            content: "Here is your full DM conversation with " + partnerName + ":\n\n" + conversationLines + "\n\nWrite your next reply. Keep it natural and contextual to the conversation so far."
-        }],
+        messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userMessage },
+        ],
     });
-    return completion.choices[0].message.content;
+    var replyText = completion.choices[0].message.content.trim();
+
+    // ── Step 5: Log ───────────────────────────────────────────────────────────
+    sessionLog.addEntry({
+        type: "dm",
+        partnerName: partnerName,
+        tags: tags,
+        conversation: messages.slice(-6).map(function(m) {
+            return { role: m.role, text: m.text };
+        }),
+        reply: replyText,
+    });
+
+    return replyText;
 }
 
 // ─── SINGLE POLL: check for unreads and reply ────────────
@@ -405,39 +684,45 @@ async function pollAndReply(page, botName, repliedDMs) {
         await sleep(2000);
     }
 
-    // Dismiss overlays
-    await page.keyboard.press('Escape');
-    await sleep(300);
+    // Dismiss any open dropdowns/overlays before touching the UI
+    await dismissOverlays(page);
 
-    // Open chat panel
+    // Open chat panel and wait for conversation list to actually render
     var chatOpened = await openChatPanel(page);
     if (!chatOpened) {
         console.log("    Could not find chat icon — skipping poll");
         return 0;
     }
-    await sleep(2000);
+    try {
+        await page.waitForSelector('[class*="MessageContent"]', { timeout: 8000 });
+    } catch (e) { /* no conversations visible — getConversationList will return empty */ }
+    await sleep(300);
 
-    // Get conversation list
+    // Get ALL conversations — reply to any where the bot hasn't replied yet.
+    // Skip system notifications (no real name extracted from DOM).
     var convList = await getConversationList(page, botName);
-    var unreadConvs = convList.conversations.filter(function(c) { return c.isUnread; });
+    var pendingConvs = convList.conversations.filter(function(c) {
+        // Must have a real person name (notifications tend to have no extractable name)
+        return c.name && c.name.trim().length > 1;
+    });
 
-    // Filter out already-replied
-    unreadConvs = unreadConvs.filter(function(c) {
+    // Filter out conversations whose last message we've already replied to
+    pendingConvs = pendingConvs.filter(function(c) {
         var key = c.name + ":" + (c.lastMsg || '').substring(0, 80);
         return !repliedDMs.has(key);
     });
 
-    if (unreadConvs.length === 0) {
+    if (pendingConvs.length === 0) {
         // Close chat panel silently
         await closeChatPanel(page);
         return 0;
     }
 
-    console.log("  " + unreadConvs.length + " unread DM(s): " +
-        unreadConvs.map(function(c) { return c.name; }).join(", "));
+    console.log("  " + pendingConvs.length + " conversation(s) to check: " +
+        pendingConvs.map(function(c) { return c.name; }).join(", "));
 
-    for (var di = 0; di < unreadConvs.length; di++) {
-        var targetConv = unreadConvs[di];
+    for (var di = 0; di < pendingConvs.length; di++) {
+        var targetConv = pendingConvs[di];
 
         // For 2nd+ conversation, close and reopen chat panel for fresh DOM
         if (di > 0) {
@@ -447,25 +732,34 @@ async function pollAndReply(page, botName, repliedDMs) {
                 console.log("    Could not reopen chat panel — stopping");
                 break;
             }
-            await sleep(2000);
+            // Wait for the conversation list to actually render before scanning
+            try {
+                await page.waitForSelector('[class*="MessageContent"]', { timeout: 10000 });
+            } catch (e) { /* panel open but empty — handled below */ }
+            await sleep(500);
 
-            // Re-scan and find by name
+            // Re-scan and find by name (normalized: trimmed + lowercase)
             var freshList = await getConversationList(page, botName);
             var freshConv = null;
+            var targetNorm = targetConv.name.trim().toLowerCase();
             for (var fi = 0; fi < freshList.conversations.length; fi++) {
-                if (freshList.conversations[fi].name === targetConv.name) {
+                var n = (freshList.conversations[fi].name || '').trim().toLowerCase();
+                if (n === targetNorm) {
                     freshConv = freshList.conversations[fi];
                     break;
                 }
             }
             if (!freshConv) {
-                console.log("    Could not find " + targetConv.name + " in refreshed list — skipping");
-                continue;
+                var foundNames = freshList.conversations.map(function(c) { return c.name; }).join(', ');
+                console.log("    " + targetConv.name + " not found — list has: [" + foundNames + "] — proceeding with original position");
+                // Don't skip — fall through with original targetConv index
+            } else {
+                targetConv = freshConv;
             }
-            targetConv = freshConv;
         }
 
-        // Random reply delay (0s – 60s)
+        // Random reply delay (0s – 60s) — keep the panel open while we wait.
+        // Closing and reopening causes the DM list DOM to be empty for 10+ seconds.
         var replyDelay = randomBetween(CONFIG.replyDelayMinMs, CONFIG.replyDelayMaxMs);
         if (replyDelay > 1000) {
             console.log("    Waiting " + formatMs(replyDelay) + " before replying to " + targetConv.name + "...");
@@ -480,20 +774,55 @@ async function pollAndReply(page, botName, repliedDMs) {
         }
         await sleep(2500);
 
-        // Read full conversation
+        // Read full conversation — retry once with longer wait if no bubbles found
         var convInfo = await readFullConversation(page, botName);
+        if (convInfo.messages.length === 0 && (!convInfo.debugInfo || !convInfo.debugInfo[0] || convInfo.debugInfo[0].bubbleCount === 0)) {
+            console.log("    [" + (convInfo.partner || targetConv.name) + "] No bubbles on first read — waiting 3s and retrying...");
+            await sleep(3000);
+            convInfo = await readFullConversation(page, botName);
+        }
         var partner = convInfo.partner || targetConv.name;
 
+        // ── Debug: print sender-detection info ────────────────────────────────
+        if (convInfo.debugInfo && convInfo.debugInfo.length > 0) {
+            var selectorInfo = convInfo.debugInfo[0];
+            if (selectorInfo.error) {
+                console.log("    [" + partner + "] WARN: " + selectorInfo.error);
+            } else {
+                console.log("    [" + partner + "] selector:" + selectorInfo.selector +
+                    " bubbles:" + selectorInfo.bubbleCount +
+                    " partner:'" + selectorInfo.partner + "'");
+            }
+            for (var dbg = 1; dbg < convInfo.debugInfo.length; dbg++) {
+                var d = convInfo.debugInfo[dbg];
+                console.log("      bubble[" + d.idx + "] role:" + d.role +
+                    " name:'" + (d.foundName || '?') + "'" +
+                    " text:" + d.text);
+            }
+        }
         console.log("    [" + partner + "] " + convInfo.messages.length + " messages, last sender: " + (convInfo.lastSender || "unknown"));
 
         if (convInfo.lastSender === 'bot') {
             console.log("    [" + partner + "] Last message is ours — no reply needed");
+            // Mark as handled so we don't re-open this conversation on the next poll
+            var skipKey = targetConv.name + ":" + (targetConv.lastMsg || '').substring(0, 80);
+            repliedDMs.add(skipKey);
+            saveRepliedDMs(repliedDMs);
         } else if (convInfo.lastSender === 'partner' && convInfo.messages.length > 0) {
             var lastPartnerMsg = convInfo.messages[convInfo.messages.length - 1].text;
             console.log("    [" + partner + "] Their last msg: " + lastPartnerMsg.substring(0, 80));
 
             // Generate reply with full conversation context
             var dmReply = await generateDMReply(partner, convInfo.messages);
+
+            // Model decided this doesn't warrant a reply
+            if (dmReply.trim() === '[NO_REPLY]') {
+                console.log("    [" + partner + "] Leaving on read (model decided no reply needed)");
+                var noReplyKey = targetConv.name + ":" + (targetConv.lastMsg || '').substring(0, 80);
+                repliedDMs.add(noReplyKey);
+                saveRepliedDMs(repliedDMs);
+                continue;
+            }
 
             console.log("    " + "-".repeat(40));
             console.log("    REPLY TO " + partner + ":");
@@ -520,24 +849,31 @@ async function pollAndReply(page, botName, repliedDMs) {
                     console.log("    Sent!");
                 }
 
-                // Track as replied
-                var dmKey = targetConv.name + ":" + (targetConv.lastMsg || '').substring(0, 80);
+                // Track as replied — save TWO keys so the filter catches it regardless
+                // of whether the list preview shows our reply or their last message.
+                // Key 1: bot's reply text (matches once list preview refreshes)
+                var dmKey = targetConv.name + ":" + dmReply.substring(0, 80);
                 repliedDMs.add(dmKey);
+                // Key 2: partner's last message (matches if list preview hasn't refreshed yet)
+                var partnerMsgKey = targetConv.name + ":" + lastPartnerMsg.substring(0, 80);
+                repliedDMs.add(partnerMsgKey);
                 saveRepliedDMs(repliedDMs);
                 handled++;
             } else {
                 console.log("    Could not find DM input box — skipping");
             }
         } else {
-            console.log("    [" + partner + "] Could not read messages — skipping");
+            console.log("    [" + partner + "] Could not read messages — skipping and muting for this session");
+            // Save a skip key so we don't retry every poll (uses current preview as key)
+            var unreadableKey = targetConv.name + ":" + (targetConv.lastMsg || '').substring(0, 80);
+            repliedDMs.add(unreadableKey);
+            saveRepliedDMs(repliedDMs);
         }
 
         // Go back to conversation list
+        // Just close the panel — the next iteration's di>0 block will reopen it
         await closeChatPanel(page);
         await sleep(500);
-        var reopen = await openChatPanel(page);
-        if (!reopen) break;
-        await sleep(1500);
     }
 
     // Close chat panel
@@ -601,6 +937,9 @@ async function main() {
             console.log("\n" + "-".repeat(55));
             console.log("ACTIVE PERIOD DONE — replied to " + totalHandled + " DMs across " + pollCount + " polls");
             console.log("-".repeat(55));
+
+            // Write session log so client can review classifier tag choices
+            sessionLog.writeLogs();
 
             // ── INACTIVE PERIOD ──
             var inactiveTime = randomBetween(CONFIG.inactiveMinMs, CONFIG.inactiveMaxMs);

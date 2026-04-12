@@ -507,6 +507,29 @@
             font-size: 12px;
             margin-bottom: 20px;
         }
+
+        /* ─── WORKFLOW STAGE BUTTONS ─── */
+        .workflow-stages { display: flex; flex-direction: column; gap: 5px; }
+        .workflow-stage-btn {
+            display: flex; align-items: flex-start; gap: 10px;
+            padding: 9px 12px; border-radius: 9px;
+            border: 1.5px solid #2a2a32; background: transparent;
+            color: #777; font-family: inherit; font-size: 11px;
+            cursor: pointer; transition: all 0.15s; text-align: left; width: 100%;
+        }
+        .workflow-stage-btn:hover { border-color: #444; color: #aaa; }
+        .workflow-stage-btn.active {
+            border-color: #4ECDC4; background: rgba(78,205,196,0.09); color: #4ECDC4;
+        }
+        .workflow-stage-num {
+            min-width: 20px; height: 20px; border-radius: 50%;
+            border: 1.5px solid #333; display: flex; align-items: center;
+            justify-content: center; font-size: 10px; font-weight: 700;
+            color: #555; flex-shrink: 0; margin-top: 1px;
+        }
+        .workflow-stage-btn.active .workflow-stage-num { border-color: #4ECDC4; color: #4ECDC4; }
+        .workflow-stage-title { font-weight: 600; }
+        .workflow-stage-desc  { font-size: 10px; opacity: 0.6; margin-top: 2px; }
     </style>
 </head>
 
@@ -575,6 +598,11 @@
             <!-- RIGHT -->
             <div>
                 <div class="card">
+                    <div class="card-label">Workflow Stage <span style="color:#333">(pick one)</span></div>
+                    <div class="workflow-stages" id="workflowContainer"></div>
+                </div>
+
+                <div class="card">
                     <div class="card-label">Tone Tags <span style="color:#333">(select all that apply)</span></div>
                     <div class="tone-wrap" id="toneContainer"></div>
                 </div>
@@ -604,6 +632,32 @@
 
     <script>
         // ─── CONFIG ──────────────────────────────────────
+        const DM_STAGES = [{
+            num: 1,
+            value: "connect",
+            title: "Connect",
+            desc: "Open with something specific — shared interest, their post, a reference"
+        }, {
+            num: 2,
+            value: "gather-intel",
+            title: "Gather Intel",
+            desc: "Soft qualify — learn their history, pain, current situation"
+        }, {
+            num: 3,
+            value: "share-authority",
+            title: "Share Authority",
+            desc: "Vulnerability, personal story, current life, expertise, future vision"
+        }, {
+            num: 4,
+            value: "frame-outcome",
+            title: "Frame Dream Outcome",
+            desc: "More intel — steer toward their goals and business situation"
+        }, {
+            num: 5,
+            value: "funneling-to-dms",
+            title: "Funneling to DMs",
+            desc: "Move the conversation from public comment to private DM"
+        }];
         const TONE_OPTIONS = [{
             label: "Hype / Energy",
             value: "hype",
@@ -703,6 +757,10 @@
             value: "value-delivery",
             desc: "Teaching, sharing insights for free"
         }, {
+            label: "Funneling to the DMs",
+            value: "funneling-to-dms",
+            desc: "Guiding prospects to my DMs"
+        }, {
             label: "Funneling",
             value: "funneling",
             desc: "Guiding prospects to my skool community"
@@ -710,10 +768,6 @@
             label: "Info gathering",
             value: "info-gathering",
             desc: "Collecting information, asking questions"
-        }, {
-            label: "Lead Qualification",
-            value: "lead-qualification",
-            desc: "Do they have money? Do they have the problem? Are they the right fit?"
         }, {
             label: "Social Proof",
             value: "social-proof",
@@ -723,17 +777,9 @@
             value: "authority-proofing",
             desc: "Generally one-liners showcasing Scott's incredible knowledge and expertise on the topic"
         }, {
-            label: "Pain Point Agitation",
-            value: "pain-agitation",
-            desc: "Surfacing or amplifying their problem"
-        }, {
             label: "Objection Handling",
             value: "objection-handling",
             desc: "Addressing doubts or resistance"
-        }, {
-            label: "Close to Call",
-            value: "close-to-call",
-            desc: "Pushing toward booking a sales call"
         }, {
             label: "Community Building",
             value: "community-building",
@@ -797,6 +843,7 @@
                     // Scott wrote the top-level comment → context is the original post
                     if (isScott(comment.author)) {
                         if (!comment.tags) comment.tags = {
+                            workflow_stage: "",
                             tone_tags: [],
                             intent: "",
                             sales_stage: ""
@@ -814,6 +861,7 @@
                     (thread.replies || []).forEach((reply, ri) => {
                         if (isScott(reply.author)) {
                             if (!reply.tags) reply.tags = {
+                                workflow_stage: "",
                                 tone_tags: [],
                                 intent: "",
                                 sales_stage: ""
@@ -966,6 +1014,27 @@
             // Scott's reply
             $("scottContent").textContent = entry.scottReply.content;
 
+            // Workflow stage
+            const wfC = $("workflowContainer");
+            wfC.innerHTML = "";
+            DM_STAGES.forEach(s => {
+                const active = tags.workflow_stage === s.value;
+                const btn = document.createElement("button");
+                btn.className = "workflow-stage-btn" + (active ? " active" : "");
+                btn.innerHTML = `
+                    <div class="workflow-stage-num">${s.num}</div>
+                    <div>
+                        <div class="workflow-stage-title">${s.title}</div>
+                        <div class="workflow-stage-desc">${s.desc}</div>
+                    </div>`;
+                btn.onclick = () => {
+                    tags.workflow_stage = s.value;
+                    saveToServer();
+                    render();
+                };
+                wfC.appendChild(btn);
+            });
+
             // Tone pills
             const toneC = $("toneContainer");
             toneC.innerHTML = "";
@@ -1020,7 +1089,7 @@
                 stC.appendChild(btn);
             });
 
-            // Status
+            // Status — workflow_stage is bonus, not required
             const complete = (tags.tone_tags || []).length > 0 && tags.intent && tags.sales_stage;
             const badge = $("statusBadge");
             badge.className = "status " + (complete ? "complete" : "incomplete");

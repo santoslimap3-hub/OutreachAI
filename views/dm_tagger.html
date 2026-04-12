@@ -19,34 +19,58 @@
         .load-modal {
             position: fixed; inset: 0;
             display: flex; align-items: center; justify-content: center;
-            background: rgba(10, 10, 15, 0.97); z-index: 1000;
+            background: rgba(10,10,15,0.97); z-index: 1000;
         }
         .load-box {
             background: #141418; border: 1px solid #2a2a32;
-            border-radius: 16px; padding: 48px; max-width: 560px;
-            width: 90%; text-align: center;
+            border-radius: 16px; padding: 40px; max-width: 680px;
+            width: 93%; text-align: center;
         }
         .load-box h1 { font-size: 22px; font-weight: 700; margin-bottom: 8px; }
-        .load-box p { color: #888; font-size: 12px; margin-bottom: 28px; line-height: 1.7; }
+        .load-box p  { color: #888; font-size: 12px; margin-bottom: 24px; line-height: 1.7; }
         .load-box code { color: #4ECDC4; background: #1a2a28; padding: 2px 6px; border-radius: 4px; }
+
+        .zones-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px; }
+        @media (max-width: 600px) { .zones-grid { grid-template-columns: 1fr; } }
+
+        .zone-wrap {}
+        .zone-label {
+            font-size: 10px; color: #666; text-align: left; margin-bottom: 6px;
+            letter-spacing: 0.5px; text-transform: uppercase; font-weight: 700;
+        }
+        .zone-label .req { color: #FF6B35; }
+        .zone-label .opt { color: #4ECDC4; }
+
         .dropzone {
             border: 2px dashed #333; border-radius: 12px;
-            padding: 32px; cursor: pointer; transition: all 0.2s; margin-bottom: 8px;
+            padding: 28px 20px; cursor: pointer; transition: all 0.2s;
         }
-        .dropzone.over { border-color: #4ECDC4; background: rgba(78,205,196,0.05); }
-        .dropzone span { color: #666; font-size: 13px; }
+        .dropzone.over  { border-color: #4ECDC4; background: rgba(78,205,196,0.05); }
+        .dropzone.loaded { border-color: #4ECDC4; border-style: solid; background: rgba(78,205,196,0.06); }
+        .dropzone.loaded-opt { border-color: #F4A261; border-style: solid; background: rgba(244,162,97,0.06); }
+        .dropzone span  { color: #666; font-size: 11px; }
         .dropzone strong { color: #aaa; }
-        .load-hint { font-size: 11px; color: #444; margin-bottom: 20px; }
+        .dropzone .check { color: #4ECDC4; font-size: 14px; display: block; margin-bottom: 4px; }
+        .dropzone .check-opt { color: #F4A261; font-size: 14px; display: block; margin-bottom: 4px; }
+
+        .start-btn {
+            width: 100%; padding: 12px; border-radius: 10px; border: none;
+            background: linear-gradient(135deg, #4ECDC4, #2EC4B6);
+            color: #0c0c10; font-size: 13px; font-family: inherit;
+            font-weight: 700; cursor: pointer; margin-top: 4px; transition: opacity 0.2s;
+        }
+        .start-btn:disabled { background: #1e1e28; color: #444; cursor: not-allowed; }
+        .load-hint { font-size: 11px; color: #444; margin-top: 10px; }
 
         /* ─── MAIN APP ─── */
         .app { padding: 16px 20px 40px; display: none; }
         .app.active { display: block; }
 
         .header {
-            display: flex; justify-content: space-between;
-            align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 10px;
+            display: flex; justify-content: space-between; align-items: center;
+            margin-bottom: 16px; flex-wrap: wrap; gap: 10px;
         }
-        .header h1 { font-size: 17px; font-weight: 700; letter-spacing: -0.5px; }
+        .header h1 { font-size: 17px; font-weight: 700; }
         .header .sub { font-size: 11px; color: #555; margin-top: 3px; }
 
         .btn-row { display: flex; gap: 8px; }
@@ -62,107 +86,149 @@
         }
 
         /* Progress */
-        .progress-track { height: 3px; background: #1a1a22; border-radius: 2px; margin-bottom: 18px; overflow: hidden; }
-        .progress-fill { height: 100%; background: linear-gradient(90deg, #4ECDC4, #F4A261); border-radius: 2px; transition: width 0.4s; }
+        .progress-track { height: 3px; background: #1a1a22; border-radius: 2px; margin-bottom: 18px; }
+        .progress-fill  { height: 100%; background: linear-gradient(90deg, #4ECDC4, #F4A261); transition: width 0.4s; }
 
         /* Nav dots */
         .nav-dots { display: flex; gap: 3px; margin-bottom: 18px; flex-wrap: wrap; }
         .nav-dot {
             width: 22px; height: 22px; border-radius: 5px; border: 1px solid #2a2a32;
             background: transparent; color: #444; font-size: 8px; font-family: inherit;
-            cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.15s;
+            cursor: pointer; display: flex; align-items: center; justify-content: center;
         }
-        .nav-dot.active { border: 2px solid #4ECDC4; background: #1a1a22; color: #f0f0f0; font-weight: 700; }
-        .nav-dot.tagged { background: rgba(78,205,196,0.18); color: #4ECDC4; }
-        .nav-dot.skipped { background: rgba(100,100,120,0.2); color: #555; }
+        .nav-dot.active  { border: 2px solid #4ECDC4; background: #1a1a22; color: #f0f0f0; font-weight: 700; }
+        .nav-dot.tagged  { background: rgba(78,205,196,0.18); color: #4ECDC4; }
+        .nav-dot.ai-pre  { background: rgba(244,162,97,0.12); color: #F4A261; }
+        .nav-dot.skipped { background: rgba(100,100,120,0.15); color: #444; }
 
         /* Two columns */
-        .columns { display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 18px; max-width: 1200px; }
+        .columns { display: grid; grid-template-columns: 1.15fr 0.85fr; gap: 18px; max-width: 1240px; }
         @media (max-width: 900px) { .columns { grid-template-columns: 1fr; } }
 
-        .card { background: #141418; border: 1px solid #2a2a32; border-radius: 12px; padding: 16px; margin-bottom: 14px; }
-
+        .card {
+            background: #141418; border: 1px solid #2a2a32;
+            border-radius: 12px; padding: 16px; margin-bottom: 14px;
+        }
         .card-label {
             font-size: 10px; color: #555; text-transform: uppercase;
             letter-spacing: 1px; margin-bottom: 12px; font-weight: 700;
         }
-        .card-label .contact-name { color: #4ECDC4; font-size: 11px; text-transform: none; letter-spacing: 0; }
 
-        /* Chat bubbles */
-        .chat-scroll { max-height: 480px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+        /* AI badge */
+        .ai-badge {
+            display: none; font-size: 9px; font-weight: 700;
+            color: #F4A261; background: rgba(244,162,97,0.1);
+            border: 1px solid rgba(244,162,97,0.3); border-radius: 4px;
+            padding: 2px 7px; margin-left: 8px; vertical-align: middle;
+            text-transform: none; letter-spacing: 0;
+        }
+
+        /* ── Chat bubbles ── */
+        .chat-scroll {
+            max-height: 500px; overflow-y: auto;
+            display: flex; flex-direction: column; gap: 8px;
+        }
         .chat-scroll::-webkit-scrollbar { width: 4px; }
         .chat-scroll::-webkit-scrollbar-thumb { background: #2a2a32; border-radius: 4px; }
 
         .bubble-row { display: flex; flex-direction: column; gap: 2px; }
-        .bubble-row.lead { align-items: flex-start; }
+        .bubble-row.lead  { align-items: flex-start; }
         .bubble-row.scott { align-items: flex-end; }
 
         .bubble-speaker { font-size: 10px; color: #555; padding: 0 4px; }
         .bubble-row.scott .bubble-speaker { color: #F4A261; }
+        .bubble-row.lead  .bubble-speaker { color: #4ECDC4; }
 
         .bubble {
-            max-width: 82%; padding: 9px 13px; border-radius: 12px;
+            max-width: 80%; padding: 9px 13px; border-radius: 12px;
             font-size: 12px; line-height: 1.65; white-space: pre-wrap; word-break: break-word;
         }
-        .bubble-row.lead .bubble { background: #1e1e28; color: #ccc; border-radius: 12px 12px 12px 3px; }
-        .bubble-row.scott .bubble { background: #1a2a26; color: #ddd; border-radius: 12px 12px 3px 12px; }
+        .bubble-row.lead  .bubble { background: #1e1e28; color: #ccc; border-radius: 12px 12px 12px 3px; }
+        .bubble-row.scott .bubble { background: #1a2a26; color: #ccc; border-radius: 12px 12px 3px 12px; }
         .bubble-row.scott.target .bubble {
             background: rgba(244,162,97,0.1); border: 1.5px solid #F4A261;
             color: #f0f0f0; border-radius: 12px 12px 3px 12px;
         }
-        .bubble-time { font-size: 9px; color: #333; padding: 0 4px; }
 
-        .divider { text-align: center; font-size: 10px; color: #333; margin: 4px 0; letter-spacing: 1px; }
+        .divider {
+            text-align: center; font-size: 10px; color: #333;
+            margin: 4px 0; letter-spacing: 1px;
+        }
 
-        /* ─── RIGHT PANEL ─── */
+        /* Lead name chip in card header */
+        .lead-chip {
+            font-size: 10px; color: #4ECDC4; background: rgba(78,205,196,0.09);
+            border: 1px solid rgba(78,205,196,0.2); border-radius: 4px;
+            padding: 2px 8px; font-weight: 600; float: right;
+            text-transform: none; letter-spacing: 0;
+        }
 
-        /* DM Workflow stage — numbered list */
+        /* ── Right panel ── */
+
+        /* Non-sales toggle */
+        .nonsales-row {
+            display: flex; align-items: center; gap: 10px;
+            padding: 10px 12px; border-radius: 9px; border: 1.5px solid #2a2a32;
+            cursor: pointer; margin-bottom: 8px; transition: all 0.15s;
+        }
+        .nonsales-row.active { border-color: #8D99AE; background: rgba(141,153,174,0.08); }
+        .toggle-box {
+            width: 16px; height: 16px; border-radius: 4px; border: 1.5px solid #444;
+            display: flex; align-items: center; justify-content: center; font-size: 10px; flex-shrink: 0;
+        }
+        .nonsales-row.active .toggle-box { border-color: #8D99AE; background: #8D99AE; color: #0c0c10; }
+        .nonsales-label { font-size: 11px; color: #777; }
+        .nonsales-row.active .nonsales-label { color: #8D99AE; }
+
+        /* DM workflow stages */
         .dm-stages { display: flex; flex-direction: column; gap: 5px; }
+        .dm-stages.disabled { opacity: 0.25; pointer-events: none; }
+
         .dm-stage-btn {
             display: flex; align-items: flex-start; gap: 10px; padding: 9px 12px;
             border-radius: 9px; border: 1.5px solid #2a2a32; background: transparent;
-            color: #777; font-family: inherit; font-size: 12px; cursor: pointer;
-            transition: all 0.15s; text-align: left; width: 100%;
+            color: #777; font-family: inherit; font-size: 11px;
+            cursor: pointer; transition: all 0.15s; text-align: left; width: 100%;
         }
         .dm-stage-btn:hover { border-color: #444; color: #aaa; }
-        .dm-stage-btn.active {
-            border-color: #F4A261; background: rgba(244,162,97,0.09); color: #F4A261;
-        }
-        .dm-stage-num {
-            min-width: 20px; height: 20px; border-radius: 50%;
-            border: 1.5px solid #333; display: flex; align-items: center;
-            justify-content: center; font-size: 10px; font-weight: 700; color: #555;
-            margin-top: 1px; flex-shrink: 0;
-        }
-        .dm-stage-btn.active .dm-stage-num { border-color: #F4A261; color: #F4A261; }
-        .dm-stage-text .dm-stage-title { font-weight: 600; }
-        .dm-stage-text .dm-stage-desc { font-size: 10px; opacity: 0.65; margin-top: 2px; }
-        .dm-stage-btn.case-a .dm-stage-num { border-color: #4ECDC4; color: #4ECDC4; }
+        .dm-stage-btn.active { border-color: #F4A261; background: rgba(244,162,97,0.09); color: #F4A261; }
         .dm-stage-btn.case-a.active { border-color: #4ECDC4; background: rgba(78,205,196,0.09); color: #4ECDC4; }
-        .dm-stage-btn.case-b .dm-stage-num { border-color: #8D99AE; color: #8D99AE; }
         .dm-stage-btn.case-b.active { border-color: #8D99AE; background: rgba(141,153,174,0.09); color: #8D99AE; }
+
+        .dm-stage-num {
+            min-width: 20px; height: 20px; border-radius: 50%; border: 1.5px solid #333;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 10px; font-weight: 700; color: #555; flex-shrink: 0; margin-top: 1px;
+        }
+        .dm-stage-btn.active        .dm-stage-num { border-color: #F4A261; color: #F4A261; }
+        .dm-stage-btn.case-a.active .dm-stage-num { border-color: #4ECDC4; color: #4ECDC4; }
+        .dm-stage-btn.case-b.active .dm-stage-num { border-color: #8D99AE; color: #8D99AE; }
+
+        .dm-stage-text .dm-stage-title { font-weight: 600; }
+        .dm-stage-text .dm-stage-desc  { font-size: 10px; opacity: 0.6; margin-top: 2px; }
 
         /* Tone pills */
         .tone-wrap { display: flex; flex-wrap: wrap; gap: 5px; }
         .tone-pill {
             display: inline-flex; align-items: center; gap: 5px; padding: 5px 11px;
-            border-radius: 20px; font-size: 11px; font-family: inherit; font-weight: 500;
-            cursor: pointer; transition: all 0.15s; white-space: nowrap; background: transparent;
+            border-radius: 20px; font-size: 11px; font-family: inherit;
+            font-weight: 500; cursor: pointer; transition: all 0.15s;
+            white-space: nowrap; background: transparent;
         }
 
         /* Intent cards */
         .intent-card {
             display: flex; flex-direction: column; gap: 2px; padding: 8px 12px;
             border-radius: 9px; border: 1.5px solid #2a2a32; background: transparent;
-            color: #888; font-size: 11px; font-family: inherit; cursor: pointer;
-            transition: all 0.15s; text-align: left; width: 100%;
+            color: #888; font-size: 11px; font-family: inherit;
+            cursor: pointer; transition: all 0.15s; text-align: left; width: 100%;
         }
         .intent-card.active { border-color: #4ECDC4; background: rgba(78,205,196,0.08); color: #4ECDC4; }
         .intent-card .label { font-weight: 600; color: #aaa; }
         .intent-card.active .label { color: #f0f0f0; }
-        .intent-card .desc { font-size: 10px; opacity: 0.65; }
+        .intent-card .desc  { font-size: 10px; opacity: 0.65; }
 
-        /* Stage buttons */
+        /* Sales stage */
         .stage-row { display: flex; gap: 6px; }
         .stage-btn {
             flex: 1; padding: 10px 6px; border-radius: 9px; border: 1.5px solid #2a2a32;
@@ -171,30 +237,27 @@
             display: flex; flex-direction: column; align-items: center; gap: 3px;
         }
         .stage-btn.active { border-color: #F4A261; background: rgba(244,162,97,0.1); color: #F4A261; }
-        .stage-btn .icon { font-size: 16px; }
+        .stage-btn .icon  { font-size: 16px; }
 
         /* Status */
         .status {
-            padding: 10px 14px; border-radius: 9px; text-align: center;
-            font-size: 11px; font-weight: 600;
+            padding: 10px 14px; border-radius: 9px;
+            text-align: center; font-size: 11px; font-weight: 600;
         }
-        .status.complete { background: rgba(78,205,196,0.08); border: 1px solid rgba(78,205,196,0.2); color: #4ECDC4; }
+        .status.complete   { background: rgba(78,205,196,0.08);  border: 1px solid rgba(78,205,196,0.2);  color: #4ECDC4; }
         .status.incomplete { background: rgba(255,107,53,0.06); border: 1px solid rgba(255,107,53,0.18); color: #FF6B35; }
 
         /* Bottom nav */
         .bottom-nav {
             display: flex; justify-content: space-between; align-items: center;
-            margin-top: 20px; max-width: 1200px;
+            margin-top: 20px; max-width: 1240px;
         }
         .nav-btn {
             background: transparent; border: 1px solid #2a2a32; border-radius: 8px;
             padding: 9px 18px; color: #aaa; font-size: 12px; font-family: inherit; cursor: pointer;
         }
         .nav-btn:disabled { color: #333; cursor: default; }
-        .nav-btn.next {
-            background: linear-gradient(135deg, #4ECDC4, #2EC4B6);
-            border: none; color: #0c0c10; font-weight: 700;
-        }
+        .nav-btn.next { background: linear-gradient(135deg,#4ECDC4,#2EC4B6); border: none; color: #0c0c10; font-weight: 700; }
         .nav-btn.next:disabled { background: transparent; border: 1px solid #2a2a32; color: #333; }
         .nav-info { font-size: 11px; color: #555; text-align: center; }
 
@@ -208,12 +271,7 @@
         .toast.show { display: block; animation: fadeIn 0.3s ease; }
         @keyframes fadeIn {
             from { opacity: 0; transform: translateY(8px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-
-        section-title {
-            display: block; font-size: 10px; color: #555; text-transform: uppercase;
-            letter-spacing: 1px; font-weight: 700; margin-bottom: 8px;
+            to   { opacity: 1; transform: translateY(0); }
         }
     </style>
 </head>
@@ -226,13 +284,28 @@
         <h1>DM Tagger</h1>
         <p>
             Tag Scott's DM replies with workflow stage, tone, intent, and sales stage.<br>
-            Drop your <code>dm-classified.csv</code> file below to begin.<br><br>
-            The tagger will randomly shuffle DMs across conversations so you're not spending the first 100 labels on the same chat.
+            Optionally load AI pre-labels so you just review and correct — not label from scratch.
         </p>
-        <div class="dropzone" id="dropzone">
-            <span>Drop <strong>dm-classified.csv</strong> here or click to browse</span>
+
+        <div class="zones-grid">
+            <!-- Zone 1: JSONL (required) -->
+            <div class="zone-wrap">
+                <div class="zone-label"><span class="req">① Required</span> — DM data</div>
+                <div class="dropzone" id="dzJsonl">
+                    <span>Drop <strong>finetune_data_v5.jsonl</strong> here or click</span>
+                </div>
+            </div>
+            <!-- Zone 2: Pre-labels (optional) -->
+            <div class="zone-wrap">
+                <div class="zone-label"><span class="opt">② Optional</span> — AI pre-labels</div>
+                <div class="dropzone" id="dzPreLabels" style="opacity:0.5;pointer-events:none;">
+                    <span>Drop <strong>dm_prelabeled.json</strong> here<br><small style="color:#444">(from prelabel_dms.js)</small></span>
+                </div>
+            </div>
         </div>
-        <div class="load-hint" id="loadStatus">Awaiting file…</div>
+
+        <button class="start-btn" id="startBtn" disabled>Load data first ↑</button>
+        <div class="load-hint" id="loadStatus">Awaiting finetune_data_v5.jsonl…</div>
     </div>
 </div>
 
@@ -249,9 +322,7 @@
         </div>
     </div>
 
-    <div class="progress-track">
-        <div class="progress-fill" id="progressBar"></div>
-    </div>
+    <div class="progress-track"><div class="progress-fill" id="progressBar"></div></div>
     <div class="nav-dots" id="navDots"></div>
 
     <div class="columns">
@@ -260,8 +331,9 @@
         <div>
             <div class="card">
                 <div class="card-label">
-                    Conversation with <span class="contact-name" id="contactName"></span>
-                    <span style="float:right;color:#333" id="msgDate"></span>
+                    DM Conversation
+                    <span id="leadNameChip" class="lead-chip" style="display:none"></span>
+                    <span style="float:right;clear:right;color:#444;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;margin-top:2px" id="entryIndex"></span>
                 </div>
                 <div class="chat-scroll" id="chatScroll"></div>
             </div>
@@ -272,7 +344,17 @@
 
             <!-- DM Workflow Stage -->
             <div class="card">
-                <div class="card-label">DM Workflow Stage <span style="color:#333">(pick one)</span></div>
+                <div class="card-label">
+                    DM Workflow Stage <span style="color:#333">(pick one)</span>
+                    <span class="ai-badge" id="aiBadge">✦ AI suggested</span>
+                </div>
+
+                <!-- Non-sales toggle -->
+                <div class="nonsales-row" id="nonsalesToggle">
+                    <div class="toggle-box" id="nonsalesBox"></div>
+                    <span class="nonsales-label">Not a sales DM (WhatsApp / casual) — skip workflow stage</span>
+                </div>
+
                 <div class="dm-stages" id="stageContainer"></div>
             </div>
 
@@ -294,7 +376,7 @@
                 <div class="stage-row" id="salesStageContainer"></div>
             </div>
 
-            <div class="status incomplete" id="statusBadge">◯ Select workflow stage + at least one tone tag</div>
+            <div class="status incomplete" id="statusBadge">◯ Complete all fields above</div>
         </div>
     </div>
 
@@ -305,208 +387,251 @@
     </div>
 </div>
 
-<div class="toast" id="toast">✓ Exported dm_labeled.json</div>
+<div class="toast" id="toast">✓ Exported!</div>
 
 <script>
-// ─── DM WORKFLOW STAGES ──────────────────────────────────────────────────────
+// ─── DM WORKFLOW STAGES ───────────────────────────────────────────────────────
 const DM_STAGES = [
-    { num: 1, value: "connect",        title: "Connect",            desc: "Open with something specific to them — shared interest, their post, a reference",   cls: "" },
-    { num: 2, value: "gather-intel",   title: "Gather Intel",       desc: "Soft qualify — learn their history, pain, current situation",                        cls: "" },
-    { num: 3, value: "share-authority",title: "Share Authority",    desc: "Vulnerability, personal story, current life, expertise, future vision",              cls: "" },
-    { num: 4, value: "frame-outcome",  title: "Frame Dream Outcome",desc: "More intel — steer conversation toward their goals and business situation",          cls: "" },
-    { num: 5, value: "offer-call",     title: "Offer the Call",     desc: "Invite them to a diagnostic call — frame it as exploring, not coaching",             cls: "" },
-    { num: 6, value: "pre-qualify",    title: "Pre-Qualify",        desc: "Are they exploratory or committed? Do they have $1K–$5K to invest?",                 cls: "" },
-    { num: "A", value: "send-calendly",title: "Case A — Calendly",  desc: "Qualified + committed → send Calendly link, ask them to confirm",                   cls: "case-a" },
-    { num: "B", value: "nurture-free", title: "Case B — Nurture Out",desc: "Exploratory or no budget → send Skool link, free resources, check back when ready",cls: "case-b" },
+    { num:1,   value:"connect",         cls:"",       title:"Connect",             desc:"Open with something specific — shared interest, their post, a reference" },
+    { num:2,   value:"gather-intel",    cls:"",       title:"Gather Intel",        desc:"Soft qualify — learn their history, pain, current situation" },
+    { num:3,   value:"share-authority", cls:"",       title:"Share Authority",     desc:"Vulnerability, personal story, current life, expertise, future vision" },
+    { num:4,   value:"frame-outcome",   cls:"",       title:"Frame Dream Outcome", desc:"More intel — steer toward their goals and business situation" },
+    { num:5,   value:"offer-call",      cls:"",       title:"Offer the Call",      desc:"Invite to a diagnostic call — exploring, not coaching yet" },
+    { num:6,   value:"pre-qualify",     cls:"",       title:"Pre-Qualify",         desc:"Committed or exploratory? Do they have $1K–$5K to invest?" },
+    { num:"A", value:"send-calendly",   cls:"case-a", title:"Case A — Calendly",   desc:"Qualified + committed → send Calendly link, ask them to confirm" },
+    { num:"B", value:"nurture-free",    cls:"case-b", title:"Case B — Nurture Out",desc:"Not ready / no budget → Skool link, free resources, check back later" },
 ];
 
-// ─── TONE OPTIONS ────────────────────────────────────────────────────────────
+// ─── TONE OPTIONS ─────────────────────────────────────────────────────────────
 const TONE_OPTIONS = [
-    { label: "Hype / Energy",       value: "hype",               color: "#FF6B35" },
-    { label: "Brotherhood",         value: "brotherhood",         color: "#4ECDC4" },
-    { label: "Chit-chat",           value: "chit-chat",           color: "#4ECDC4" },
-    { label: "Curiosity",           value: "curiosity",           color: "#4ECDC4" },
-    { label: "Empathy",             value: "empathy",             color: "#A8DADC" },
-    { label: "Authority",           value: "authority",           color: "#5E9BBA" },
-    { label: "Tough Love",          value: "tough-love",          color: "#E63946" },
-    { label: "Mystery / Teasing",   value: "mystery-teasing",     color: "#F4A261" },
-    { label: "Teasing Future Value",value: "teasing-future-value",color: "#F4A261" },
-    { label: "Vulnerability",       value: "vulnerability",       color: "#8D99AE" },
-    { label: "Humor / Playful",     value: "humor",               color: "#2EC4B6" },
-    { label: "Bonding / Rapport",   value: "bonding-rapport",     color: "#2EC4B9" },
-    { label: "Self-Aggrandization", value: "self-aggrandization", color: "#264653" },
-    { label: "Direct / No-BS",      value: "direct",              color: "#888" },
-    { label: "Storytelling",        value: "storytelling",        color: "#E9C46A" },
-    { label: "Motivational",        value: "motivational",        color: "#F77F00" },
-    { label: "Praise",              value: "praise",              color: "#98C1D9" },
-    { label: "Gratitude",           value: "gratitude",           color: "#A8DADC" },
-    { label: "Casual / Chill",      value: "casual",              color: "#606C38" },
+    { label:"Hype / Energy",        value:"hype",               color:"#FF6B35" },
+    { label:"Brotherhood",          value:"brotherhood",         color:"#4ECDC4" },
+    { label:"Motivational",         value:"motivational",        color:"#F77F00" },
+    { label:"Chit-chat",            value:"chit-chat",           color:"#4ECDC4" },
+    { label:"Curiosity",            value:"curiosity",           color:"#4ECDC4" },
+    { label:"Empathy",              value:"empathy",             color:"#A8DADC" },
+    { label:"Authority",            value:"authority",           color:"#5E9BBA" },
+    { label:"Tough Love",           value:"tough-love",          color:"#E63946" },
+    { label:"Mystery / Teasing",    value:"mystery-teasing",     color:"#F4A261" },
+    { label:"Teasing Future Value", value:"teasing-future-value",color:"#F4A261" },
+    { label:"Vulnerability",        value:"vulnerability",       color:"#8D99AE" },
+    { label:"Humor / Playful",      value:"humor",               color:"#2EC4B6" },
+    { label:"Bonding / Rapport",    value:"bonding-rapport",     color:"#2EC4B9" },
+    { label:"Self-Aggrandization",  value:"self-aggrandization", color:"#264653" },
+    { label:"Direct / No-BS",       value:"direct",              color:"#888"    },
+    { label:"Storytelling",         value:"storytelling",        color:"#E9C46A" },
+    { label:"Praise",               value:"praise",              color:"#98C1D9" },
+    { label:"Gratitude",            value:"gratitude",           color:"#A8DADC" },
+    { label:"Casual / Chill",       value:"casual",              color:"#606C38" },
 ];
 
-// ─── INTENT OPTIONS ──────────────────────────────────────────────────────────
+// ─── INTENT OPTIONS ───────────────────────────────────────────────────────────
 const INTENT_OPTIONS = [
-    { label: "Engagement / Nurture",  value: "engagement-nurture",  desc: "Build relationship, keep them active" },
-    { label: "Value Delivery",        value: "value-delivery",       desc: "Share insight, teach something useful" },
-    { label: "Info Gathering",        value: "info-gathering",       desc: "Ask questions to learn their situation" },
-    { label: "Lead Qualification",    value: "lead-qualification",   desc: "Probe budget, commitment, fit" },
-    { label: "Authority-Proofing",    value: "authority-proofing",   desc: "Demonstrate expertise naturally" },
-    { label: "Pain Agitation",        value: "pain-agitation",       desc: "Surface or amplify their problem" },
-    { label: "Objection Handling",    value: "objection-handling",   desc: "Address doubt or resistance" },
-    { label: "Close to Call",         value: "close-to-call",        desc: "Push toward booking a sales call" },
-    { label: "Funneling",             value: "funneling",            desc: "Guide toward Skool community / resources" },
-    { label: "Social Proof",          value: "social-proof",         desc: "Share results, wins, transformations" },
-    { label: "Acknowledgement",       value: "acknowledgement",      desc: "Short reaction, no agenda" },
-    { label: "Community Building",    value: "community-building",   desc: "Make them feel part of something" },
-    { label: "Redirect",              value: "redirect",             desc: "Steer conversation or set boundary" },
+    { label:"Engagement / Nurture", value:"engagement-nurture",  desc:"Build relationship, keep them active" },
+    { label:"Value Delivery",       value:"value-delivery",       desc:"Share insight, teach something useful" },
+    { label:"Info Gathering",       value:"info-gathering",       desc:"Ask questions to learn their situation" },
+    { label:"Lead Qualification",   value:"lead-qualification",   desc:"Probe budget, commitment, fit" },
+    { label:"Authority-Proofing",   value:"authority-proofing",   desc:"Demonstrate expertise naturally" },
+    { label:"Pain Agitation",       value:"pain-agitation",       desc:"Surface or amplify their problem" },
+    { label:"Objection Handling",   value:"objection-handling",   desc:"Address doubt or resistance" },
+    { label:"Close to Call",        value:"close-to-call",        desc:"Push toward booking a sales call" },
+    { label:"Funneling",            value:"funneling",            desc:"Guide toward Skool community / resources" },
+    { label:"Social Proof",         value:"social-proof",         desc:"Share results, wins, transformations" },
+    { label:"Acknowledgement",      value:"acknowledgement",      desc:"Short reaction, no agenda" },
+    { label:"Community Building",   value:"community-building",   desc:"Make them feel part of something" },
+    { label:"Redirect",             value:"redirect",             desc:"Steer conversation or set boundary" },
 ];
 
 // ─── SALES STAGES ─────────────────────────────────────────────────────────────
 const SALES_STAGES = [
-    { label: "Awareness",  value: "awareness",  icon: "👁" },
-    { label: "Engagement", value: "engagement", icon: "💬" },
-    { label: "Nurture",    value: "nurture",    icon: "🌱" },
-    { label: "Ask",        value: "ask",        icon: "🎯" },
+    { label:"Awareness",  value:"awareness",  icon:"👁" },
+    { label:"Engagement", value:"engagement", icon:"💬" },
+    { label:"Nurture",    value:"nurture",    icon:"🌱" },
+    { label:"Ask",        value:"ask",        icon:"🎯" },
 ];
 
-// ─── STATE ───────────────────────────────────────────────────────────────────
-let entries = [];       // array of tagging units (shuffled)
-let currentIndex = 0;
+// ─── STATE ────────────────────────────────────────────────────────────────────
+let entries       = [];
+let currentIndex  = 0;
+let pendingData   = null;   // parsed entries waiting for startTagging()
+let preLabels     = {};     // key → label object from dm_prelabeled.json
 
 const $ = id => document.getElementById(id);
 
-// ─── CSV PARSER (handles quoted fields with commas/newlines) ─────────────────
-function parseCSV(text) {
-    const rows = [];
-    let i = 0;
-    while (i < text.length) {
-        const row = [];
-        while (i < text.length) {
-            if (text[i] === '"') {
-                // Quoted field
-                i++;
-                let field = "";
-                while (i < text.length) {
-                    if (text[i] === '"' && text[i+1] === '"') { field += '"'; i += 2; }
-                    else if (text[i] === '"') { i++; break; }
-                    else { field += text[i++]; }
-                }
-                row.push(field.trim());
-                if (text[i] === ',') i++;
-                else if (text[i] === '\r') i++;
-                else if (text[i] === '\n') { i++; break; }
-            } else {
-                let field = "";
-                while (i < text.length && text[i] !== ',' && text[i] !== '\n' && text[i] !== '\r') {
-                    field += text[i++];
-                }
-                row.push(field.trim());
-                if (text[i] === ',') i++;
-                else if (text[i] === '\r') i++;
-                else if (text[i] === '\n') { i++; break; }
-                else break;
-            }
-        }
-        if (row.length > 1 || (row.length === 1 && row[0] !== "")) rows.push(row);
+// ─── LEAD NAME EXTRACTION ─────────────────────────────────────────────────────
+function extractLeadName(msgs) {
+    // Try system prompt first
+    const sys = (msgs[0] || {}).content || '';
+    const patterns = [
+        /conversation with[:\s]+([A-Za-z][a-z]+)/i,
+        /dm from[:\s]+([A-Za-z][a-z]+)/i,
+        /talking (?:to|with)[:\s]+([A-Za-z][a-z]+)/i,
+        /lead[:\s]+([A-Za-z][a-z]+)/i,
+        /\bName[:\s]+([A-Za-z][a-z]+)/,
+    ];
+    for (const p of patterns) {
+        const m = sys.match(p);
+        if (m && m[1].length > 1) return m[1];
     }
-    return rows;
+
+    // Try extracting from first user message — look for "Hi [Name]" or "[Name]:" opener
+    const firstUser = (msgs[1] || {}).content || '';
+    const opener = firstUser.match(/^(?:Hi|Hey|Hello)[,\s]+([A-Z][a-z]+)/);
+    if (opener) return opener[1];
+
+    // Try to find a name being addressed in the first user message
+    const addressed = firstUser.match(/,\s+([A-Z][a-z]+)[!.?]/);
+    if (addressed && addressed[1] !== 'I') return addressed[1];
+
+    return null;
 }
 
-// ─── LOAD DATA ───────────────────────────────────────────────────────────────
-function loadCSV(text) {
-    const rows = parseCSV(text);
-    if (rows.length < 2) { alert("No data found in CSV."); return; }
+// ─── PARSE JSONL ──────────────────────────────────────────────────────────────
+function parseJSONL(text) {
+    const lines    = text.trim().split('\n');
+    const rawUnits = [];
 
-    // Detect header row — skip if first row looks like column names
-    let startRow = 0;
-    const firstRow = rows[0];
-    if (/date|time|contact|speaker|message/i.test(firstRow.join(","))) startRow = 1;
+    for (const line of lines) {
+        let d;
+        try { d = JSON.parse(line.trim()); } catch (e) { continue; }
 
-    // Build per-contact conversation maps
-    // Expected columns: Date, Time, Contact, Original_Sender, Speaker, Message, ...
-    // Speaker = "Scott" or "Lead"
-    const convos = {}; // contact -> [{date, time, speaker, message}]
+        const msgs = d.messages || [];
+        if (msgs.length < 3) continue;
 
-    for (let r = startRow; r < rows.length; r++) {
-        const row = rows[r];
-        if (row.length < 6) continue;
-        const date    = row[0] || "";
-        const time    = row[1] || "";
-        const contact = (row[2] || "").trim();
-        const speaker = (row[4] || "").trim();
-        const message = (row[5] || "").trim();
-        if (!contact || !message) continue;
+        // Filter out post/comment entries
+        const firstUser = (msgs[1] || {}).content || '';
+        if (firstUser.includes('--- POST ---') || firstUser.includes('--- NEW MEMBER ---')) continue;
 
-        if (!convos[contact]) convos[contact] = [];
-        convos[contact].push({ date, time, speaker, message });
-    }
+        // Last message must be assistant (Scott's reply)
+        const lastMsg = msgs[msgs.length - 1];
+        if (lastMsg.role !== 'assistant') continue;
 
-    // Build tagging units: one per Scott message
-    const units = [];
-    for (const contact of Object.keys(convos)) {
-        const msgs = convos[contact];
-        for (let m = 0; m < msgs.length; m++) {
-            if (msgs[m].speaker.toLowerCase() !== "scott") continue;
+        // Extract lead name
+        const leadName = extractLeadName(msgs) || 'Lead';
 
-            // Get up to 8 messages of context before this one
-            const contextStart = Math.max(0, m - 8);
-            const context = msgs.slice(contextStart, m); // excludes Scott's message itself
-
-            units.push({
-                contact,
-                scottMsg: msgs[m],
-                context,
-                tags: {
-                    dm_stage:    "",
-                    tone_tags:   [],
-                    intent:      "",
-                    sales_stage: "",
-                },
-                skipped: false,
-            });
+        // Build conversation history (everything except system + last assistant)
+        const history = [];
+        for (let i = 1; i < msgs.length - 1; i++) {
+            history.push({ role: msgs[i].role, text: msgs[i].content });
         }
-    }
 
-    if (units.length === 0) {
-        alert("No Scott messages found. Check that the Speaker column contains 'Scott'.");
+        const scottReply = lastMsg.content || '';
+        // Key for matching with pre-labels (same logic as prelabel_dms.js)
+        const key = scottReply.substring(0, 80).trim().replace(/\s+/g, ' ');
+
+        rawUnits.push({
+            convKey:    msgs[1].content.substring(0, 60),
+            key,
+            leadName,
+            history,
+            scottReply,
+            tags: {
+                dm_stage:    '',
+                nonsales:    false,
+                tone_tags:   [],
+                intent:      '',
+                sales_stage: '',
+            },
+            aiSuggested: false,
+            skipped: false,
+        });
+    }
+    return rawUnits;
+}
+
+// ─── LOAD JSONL FILE ─────────────────────────────────────────────────────────
+function loadJSONL(text) {
+    const rawUnits = parseJSONL(text);
+
+    if (rawUnits.length === 0) {
+        alert('No DM entries found. Make sure this is finetune_data_v5.jsonl.');
+        $('loadStatus').textContent = 'No DM entries found — wrong file?';
         return;
     }
 
-    // ── Shuffle so consecutive entries come from different contacts ──
-    // Strategy: interleave by contact (round-robin within shuffled contacts),
-    // then do a final light shuffle to break any remaining patterns.
-    const byContact = {};
-    for (const u of units) {
-        if (!byContact[u.contact]) byContact[u.contact] = [];
-        byContact[u.contact].push(u);
+    // Interleave by conversation for variety
+    const groups = {};
+    for (const u of rawUnits) {
+        if (!groups[u.convKey]) groups[u.convKey] = [];
+        groups[u.convKey].push(u);
     }
-    // Shuffle each contact's list individually
-    for (const contact of Object.keys(byContact)) {
-        fisherYates(byContact[contact]);
-    }
-    // Round-robin interleave
-    const contactKeys = fisherYatesCopy(Object.keys(byContact));
-    const interleaved = [];
+    const keys = shuffled(Object.keys(groups));
+    for (const k of keys) fisherYates(groups[k]);
+
+    const result = [];
+    const ptrs   = {};
+    for (const k of keys) ptrs[k] = 0;
     let added = true;
-    const indices = {};
-    for (const k of contactKeys) indices[k] = 0;
     while (added) {
         added = false;
-        for (const k of contactKeys) {
-            if (indices[k] < byContact[k].length) {
-                interleaved.push(byContact[k][indices[k]++]);
-                added = true;
-            }
+        for (const k of keys) {
+            if (ptrs[k] < groups[k].length) { result.push(groups[k][ptrs[k]++]); added = true; }
         }
     }
 
-    entries = interleaved;
+    pendingData = result;
+
+    // Update modal UI
+    const dz = $('dzJsonl');
+    dz.classList.add('loaded');
+    dz.innerHTML = `<span class="check">✓</span><span style="color:#4ECDC4;font-weight:700">${result.length} DMs loaded</span><br><span style="color:#555;font-size:10px">from ${keys.length} conversations</span>`;
+
+    // Enable pre-labels zone and start button
+    $('dzPreLabels').style.opacity   = '1';
+    $('dzPreLabels').style.pointerEvents = 'auto';
+    $('startBtn').disabled  = false;
+    $('startBtn').textContent = `Start Tagging ${result.length} DMs →`;
+    $('loadStatus').textContent = 'Optionally drop dm_prelabeled.json above, then click Start.';
+}
+
+// ─── LOAD PRE-LABELS ─────────────────────────────────────────────────────────
+function loadPreLabels(text) {
+    let data;
+    try { data = JSON.parse(text); } catch (e) {
+        alert('Could not parse dm_prelabeled.json: ' + e.message);
+        return;
+    }
+
+    preLabels = data.labels || {};
+    const count = Object.keys(preLabels).length;
+
+    const dz = $('dzPreLabels');
+    dz.classList.remove('over');
+    dz.classList.add('loaded-opt');
+    dz.innerHTML = `<span class="check-opt">✓</span><span style="color:#F4A261;font-weight:700">${count} AI labels loaded</span><br><span style="color:#555;font-size:10px">generated ${data.generated_at ? data.generated_at.substring(0,10) : 'unknown'}</span>`;
+
+    const btnLabel = pendingData ? `Start Tagging ${pendingData.length} DMs →` : 'Start Tagging →';
+    $('startBtn').textContent = btnLabel;
+    $('loadStatus').textContent = `AI labels ready — ${count} entries will be pre-populated.`;
+}
+
+// ─── START TAGGING ────────────────────────────────────────────────────────────
+function startTagging() {
+    if (!pendingData) return;
+
+    entries = pendingData;
+
+    // Apply pre-labels if any
+    if (Object.keys(preLabels).length > 0) {
+        let matched = 0;
+        for (const entry of entries) {
+            const label = preLabels[entry.key];
+            if (!label) continue;
+            entry.tags.nonsales    = !!label.nonsales;
+            entry.tags.dm_stage    = label.nonsales ? null : (label.dm_stage || '');
+            entry.tags.tone_tags   = Array.isArray(label.tone_tags) ? label.tone_tags : [];
+            entry.tags.intent      = label.intent      || '';
+            entry.tags.sales_stage = label.sales_stage || '';
+            entry.aiSuggested      = true;
+            matched++;
+        }
+        console.log(`Applied pre-labels to ${matched}/${entries.length} entries`);
+    }
+
     currentIndex = 0;
-
-    $("loadModal").style.display = "none";
-    $("app").classList.add("active");
+    $('loadModal').style.display = 'none';
+    $('app').classList.add('active');
     render();
-
-    $("loadStatus").textContent = `✓ Loaded ${units.length} Scott messages from ${Object.keys(convos).length} conversations`;
 }
 
 function fisherYates(arr) {
@@ -514,273 +639,279 @@ function fisherYates(arr) {
         const j = Math.floor(Math.random() * (i + 1));
         [arr[i], arr[j]] = [arr[j], arr[i]];
     }
-    return arr;
 }
-function fisherYatesCopy(arr) { return fisherYates([...arr]); }
+function shuffled(arr) { const a = [...arr]; fisherYates(a); return a; }
 
-// ─── RENDER ──────────────────────────────────────────────────────────────────
+// ─── RENDER ───────────────────────────────────────────────────────────────────
 function render() {
     const entry = entries[currentIndex];
     const tags  = entry.tags;
 
-    // Contact name + date
-    $("contactName").textContent = entry.contact;
-    $("msgDate").textContent = entry.scottMsg.date ? entry.scottMsg.date + " " + (entry.scottMsg.time || "") : "";
+    $('entryIndex').textContent = `entry ${currentIndex + 1} of ${entries.length}`;
+
+    // ── Lead name chip ──
+    const chip = $('leadNameChip');
+    if (entry.leadName && entry.leadName !== 'Lead') {
+        chip.textContent = '👤 ' + entry.leadName;
+        chip.style.display = 'inline';
+    } else {
+        chip.style.display = 'none';
+    }
 
     // ── Chat bubbles ──
-    const scroll = $("chatScroll");
-    scroll.innerHTML = "";
+    const scroll = $('chatScroll');
+    scroll.innerHTML = '';
 
-    // Context messages
-    entry.context.forEach(msg => {
-        const isScott = msg.speaker.toLowerCase() === "scott";
-        const row = document.createElement("div");
-        row.className = "bubble-row " + (isScott ? "scott" : "lead");
-
-        const speaker = document.createElement("div");
-        speaker.className = "bubble-speaker";
-        speaker.textContent = isScott ? "Scott" : entry.contact;
-        row.appendChild(speaker);
-
-        const bubble = document.createElement("div");
-        bubble.className = "bubble";
-        bubble.textContent = msg.message;
-        row.appendChild(bubble);
-
-        if (msg.time) {
-            const time = document.createElement("div");
-            time.className = "bubble-time";
-            time.textContent = msg.time;
-            row.appendChild(time);
-        }
+    entry.history.forEach(msg => {
+        const isScott    = msg.role === 'assistant';
+        const speakerName = isScott ? 'Scott' : entry.leadName;
+        const row = makeBubble(speakerName, msg.text, isScott, false);
         scroll.appendChild(row);
     });
 
-    // Divider before target message
-    const divider = document.createElement("div");
-    divider.className = "divider";
-    divider.textContent = "▼ LABELING THIS REPLY ▼";
-    scroll.appendChild(divider);
+    const div = document.createElement('div');
+    div.className   = 'divider';
+    div.textContent = '▼  LABELING THIS REPLY  ▼';
+    scroll.appendChild(div);
 
-    // Target Scott message
-    const targetRow = document.createElement("div");
-    targetRow.className = "bubble-row scott target";
-
-    const tSpeaker = document.createElement("div");
-    tSpeaker.className = "bubble-speaker";
-    tSpeaker.textContent = "Scott";
-    targetRow.appendChild(tSpeaker);
-
-    const tBubble = document.createElement("div");
-    tBubble.className = "bubble";
-    tBubble.textContent = entry.scottMsg.message;
-    targetRow.appendChild(tBubble);
-
-    if (entry.scottMsg.time) {
-        const tTime = document.createElement("div");
-        tTime.className = "bubble-time";
-        tTime.textContent = entry.scottMsg.time;
-        targetRow.appendChild(tTime);
-    }
-    scroll.appendChild(targetRow);
-
-    // Auto-scroll to bottom so target is visible
+    scroll.appendChild(makeBubble('Scott', entry.scottReply, true, true));
     setTimeout(() => { scroll.scrollTop = scroll.scrollHeight; }, 0);
 
-    // ── DM Workflow Stage ──
-    const stageC = $("stageContainer");
-    stageC.innerHTML = "";
+    // ── AI badge ──
+    const badge = $('aiBadge');
+    badge.style.display = entry.aiSuggested ? 'inline' : 'none';
+
+    // ── Non-sales toggle ──
+    const nsRow = $('nonsalesToggle');
+    const nsBox = $('nonsalesBox');
+    nsRow.className = 'nonsales-row' + (tags.nonsales ? ' active' : '');
+    nsBox.textContent = tags.nonsales ? '✓' : '';
+    nsRow.onclick = () => {
+        tags.nonsales = !tags.nonsales;
+        if (tags.nonsales) tags.dm_stage = null;
+        else tags.dm_stage = (tags.dm_stage === null) ? '' : tags.dm_stage;
+        entry.aiSuggested = false;
+        render();
+    };
+
+    // ── DM Workflow stages ──
+    const stageC = $('stageContainer');
+    stageC.innerHTML = '';
+    stageC.className = 'dm-stages' + (tags.nonsales ? ' disabled' : '');
     DM_STAGES.forEach(s => {
-        const active = tags.dm_stage === s.value;
-        const btn = document.createElement("button");
-        btn.className = "dm-stage-btn " + s.cls + (active ? " active" : "");
+        const active = !tags.nonsales && tags.dm_stage === s.value;
+        const btn    = document.createElement('button');
+        btn.className = `dm-stage-btn ${s.cls}${active ? ' active' : ''}`;
         btn.innerHTML = `
             <div class="dm-stage-num">${s.num}</div>
             <div class="dm-stage-text">
                 <div class="dm-stage-title">${s.title}</div>
                 <div class="dm-stage-desc">${s.desc}</div>
             </div>`;
-        btn.onclick = () => { tags.dm_stage = s.value; render(); };
+        btn.onclick = () => { tags.dm_stage = s.value; entry.aiSuggested = false; render(); };
         stageC.appendChild(btn);
     });
 
     // ── Tone pills ──
-    const toneC = $("toneContainer");
-    toneC.innerHTML = "";
+    const toneC = $('toneContainer');
+    toneC.innerHTML = '';
     TONE_OPTIONS.forEach(opt => {
         const active = (tags.tone_tags || []).includes(opt.value);
-        const btn = document.createElement("button");
-        btn.className = "tone-pill";
-        btn.style.border  = `1.5px solid ${active ? opt.color : "#2a2a32"}`;
-        btn.style.background = active ? opt.color + "18" : "transparent";
-        btn.style.color   = active ? opt.color : "#777";
-        btn.textContent   = (active ? "✓ " : "") + opt.label;
+        const btn    = document.createElement('button');
+        btn.className    = 'tone-pill';
+        btn.style.border = `1.5px solid ${active ? opt.color : '#2a2a32'}`;
+        btn.style.background = active ? opt.color + '18' : 'transparent';
+        btn.style.color  = active ? opt.color : '#777';
+        btn.textContent  = (active ? '✓ ' : '') + opt.label;
         btn.onclick = () => {
-            if (!tags.tone_tags) tags.tone_tags = [];
             const idx = tags.tone_tags.indexOf(opt.value);
             if (idx === -1) tags.tone_tags.push(opt.value);
             else tags.tone_tags.splice(idx, 1);
+            entry.aiSuggested = false;
             render();
         };
         toneC.appendChild(btn);
     });
 
     // ── Intent ──
-    const intC = $("intentContainer");
-    intC.innerHTML = "";
+    const intC = $('intentContainer');
+    intC.innerHTML = '';
     INTENT_OPTIONS.forEach(opt => {
         const active = tags.intent === opt.value;
-        const btn = document.createElement("button");
-        btn.className = "intent-card" + (active ? " active" : "");
+        const btn    = document.createElement('button');
+        btn.className = 'intent-card' + (active ? ' active' : '');
         btn.innerHTML = `<span class="label">${opt.label}</span><span class="desc">${opt.desc}</span>`;
-        btn.onclick = () => { tags.intent = opt.value; render(); };
+        btn.onclick = () => { tags.intent = opt.value; entry.aiSuggested = false; render(); };
         intC.appendChild(btn);
     });
 
     // ── Sales Stage ──
-    const ssC = $("salesStageContainer");
-    ssC.innerHTML = "";
+    const ssC = $('salesStageContainer');
+    ssC.innerHTML = '';
     SALES_STAGES.forEach(s => {
         const active = tags.sales_stage === s.value;
-        const btn = document.createElement("button");
-        btn.className = "stage-btn" + (active ? " active" : "");
+        const btn    = document.createElement('button');
+        btn.className = 'stage-btn' + (active ? ' active' : '');
         btn.innerHTML = `<span class="icon">${s.icon}</span><span>${s.label}</span>`;
-        btn.onclick = () => { tags.sales_stage = s.value; render(); };
+        btn.onclick = () => { tags.sales_stage = s.value; entry.aiSuggested = false; render(); };
         ssC.appendChild(btn);
     });
 
-    // ── Status badge ──
-    const complete = tags.dm_stage && (tags.tone_tags || []).length > 0 && tags.intent && tags.sales_stage;
-    const badge = $("statusBadge");
-    badge.className = "status " + (complete ? "complete" : "incomplete");
-    badge.textContent = complete
-        ? "✓ Fully tagged — next or export"
-        : "◯ Select workflow stage, tone, intent, and sales stage";
+    // ── Status ──
+    const dmOk    = tags.nonsales || (tags.dm_stage && tags.dm_stage !== '');
+    const complete = dmOk && tags.tone_tags.length > 0 && tags.intent && tags.sales_stage;
+    const statusEl = $('statusBadge');
+    statusEl.className   = 'status ' + (complete ? 'complete' : 'incomplete');
+    statusEl.textContent  = complete
+        ? '✓ Fully tagged'
+        : '◯ ' + [
+            !dmOk                       && 'workflow stage',
+            !tags.tone_tags.length      && 'tone',
+            !tags.intent                && 'intent',
+            !tags.sales_stage           && 'sales stage',
+          ].filter(Boolean).join(', ') + ' missing';
 
     // ── Nav dots ──
-    const dots = $("navDots");
-    dots.innerHTML = "";
-    const maxDots = Math.min(entries.length, 200); // cap to avoid DOM overload
+    const dots   = $('navDots');
+    dots.innerHTML = '';
+    const maxDots = Math.min(entries.length, 200);
     for (let i = 0; i < maxDots; i++) {
-        const e = entries[i];
-        const t = e.tags;
-        const tagged = t.dm_stage && (t.tone_tags || []).length > 0 && t.intent && t.sales_stage;
-        const btn = document.createElement("button");
-        btn.className = "nav-dot"
-            + (i === currentIndex ? " active" : "")
-            + (tagged ? " tagged" : "")
-            + (e.skipped ? " skipped" : "");
+        const e  = entries[i];
+        const t  = e.tags;
+        const ok = t.nonsales || (t.dm_stage && t.dm_stage !== '');
+        const isTagged = ok && t.tone_tags.length > 0 && t.intent && t.sales_stage;
+        const btn = document.createElement('button');
+        btn.className = 'nav-dot'
+            + (i === currentIndex ? ' active'  : '')
+            + (isTagged           ? ' tagged'  : (e.aiSuggested ? ' ai-pre' : ''))
+            + (e.skipped          ? ' skipped' : '');
         btn.textContent = i + 1;
         btn.onclick = () => { currentIndex = i; render(); };
         dots.appendChild(btn);
     }
     if (entries.length > maxDots) {
-        const more = document.createElement("span");
-        more.style.cssText = "font-size:10px;color:#444;padding:0 4px;line-height:22px;";
-        more.textContent = "+" + (entries.length - maxDots) + " more";
-        dots.appendChild(more);
+        const span = document.createElement('span');
+        span.style.cssText = 'font-size:10px;color:#333;padding:0 4px;line-height:22px;';
+        span.textContent   = `+${entries.length - maxDots} more`;
+        dots.appendChild(span);
     }
 
     // ── Progress ──
-    const totalTagged = entries.filter(e => {
-        const t = e.tags;
-        return t.dm_stage && (t.tone_tags || []).length > 0 && t.intent && t.sales_stage;
+    const total  = entries.length;
+    const nTagged = entries.filter(e => {
+        const t    = e.tags;
+        const ok   = t.nonsales || (t.dm_stage && t.dm_stage !== '');
+        return ok && t.tone_tags.length > 0 && t.intent && t.sales_stage;
     }).length;
-    const pct = Math.round((totalTagged / entries.length) * 100);
-    $("progressText").textContent = totalTagged + "/" + entries.length + " tagged · " + pct + "% complete";
-    $("progressBar").style.width = pct + "%";
+    const pct = Math.round((nTagged / total) * 100);
+    $('progressText').textContent = `${nTagged}/${total} tagged · ${pct}% complete`;
+    $('progressBar').style.width  = pct + '%';
 
     // ── Nav buttons ──
-    $("prevBtn").disabled = currentIndex === 0;
-    $("nextBtn").disabled = currentIndex === entries.length - 1;
-    $("navInfo").textContent = (currentIndex + 1) + " / " + entries.length + " · Arrow keys to navigate";
+    $('prevBtn').disabled = currentIndex === 0;
+    $('nextBtn').disabled = currentIndex === entries.length - 1;
+    $('navInfo').textContent = `${currentIndex + 1} / ${entries.length} · Arrow keys to navigate`;
 }
 
-// ─── NAVIGATION ──────────────────────────────────────────────────────────────
-$("prevBtn").addEventListener("click", () => { if (currentIndex > 0) { currentIndex--; render(); } });
-$("nextBtn").addEventListener("click", () => { if (currentIndex < entries.length - 1) { currentIndex++; render(); } });
-$("skipBtn").addEventListener("click", () => {
+function makeBubble(name, text, isScott, isTarget) {
+    const row     = document.createElement('div');
+    row.className = 'bubble-row ' + (isScott ? 'scott' : 'lead') + (isTarget ? ' target' : '');
+
+    const speaker = document.createElement('div');
+    speaker.className   = 'bubble-speaker';
+    speaker.textContent = name;
+    row.appendChild(speaker);
+
+    const bubble = document.createElement('div');
+    bubble.className   = 'bubble';
+    bubble.textContent = text;
+    row.appendChild(bubble);
+
+    return row;
+}
+
+// ─── NAVIGATION ───────────────────────────────────────────────────────────────
+$('prevBtn').addEventListener('click', () => { if (currentIndex > 0) { currentIndex--; render(); } });
+$('nextBtn').addEventListener('click', () => { if (currentIndex < entries.length - 1) { currentIndex++; render(); } });
+$('skipBtn').addEventListener('click', () => {
     entries[currentIndex].skipped = true;
     if (currentIndex < entries.length - 1) { currentIndex++; render(); }
 });
+$('startBtn').addEventListener('click', startTagging);
 
-document.addEventListener("keydown", e => {
+document.addEventListener('keydown', e => {
     if (!entries.length) return;
-    if (e.key === "ArrowRight" || e.key === "ArrowDown") {
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
         e.preventDefault();
         if (currentIndex < entries.length - 1) { currentIndex++; render(); }
     }
-    if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
         e.preventDefault();
         if (currentIndex > 0) { currentIndex--; render(); }
     }
 });
 
-// ─── EXPORT ──────────────────────────────────────────────────────────────────
-$("exportBtn").addEventListener("click", () => {
-    // Export only tagged entries (skip untagged and skipped)
-    const tagged = entries.filter(e => {
+// ─── EXPORT ───────────────────────────────────────────────────────────────────
+$('exportBtn').addEventListener('click', () => {
+    const dmOkFn = t => t.nonsales || (t.dm_stage && t.dm_stage !== '');
+    const done   = entries.filter(e => {
         const t = e.tags;
-        return t.dm_stage && (t.tone_tags || []).length > 0 && t.intent && t.sales_stage;
+        return dmOkFn(t) && t.tone_tags.length > 0 && t.intent && t.sales_stage;
     });
 
-    const output = tagged.map(e => ({
-        contact:      e.contact,
-        date:         e.scottMsg.date,
-        time:         e.scottMsg.time,
-        scott_message: e.scottMsg.message,
-        context:      e.context.map(m => ({ speaker: m.speaker, message: m.message })),
+    const output = done.map(e => ({
+        lead_name:   e.leadName,
+        context:     e.history.map(m => ({ role: m.role, text: m.text })),
+        scott_reply: e.scottReply,
         tags: {
-            dm_stage:    e.tags.dm_stage,
+            dm_stage:    e.tags.nonsales ? null : e.tags.dm_stage,
             tone_tags:   e.tags.tone_tags,
             intent:      e.tags.intent,
             sales_stage: e.tags.sales_stage,
         }
     }));
 
-    const blob = new Blob([JSON.stringify(output, null, 2)], { type: "application/json" });
+    const blob = new Blob([JSON.stringify(output, null, 2)], { type: 'application/json' });
     const url  = URL.createObjectURL(blob);
-    const a    = document.createElement("a");
-    a.href     = url;
-    a.download = "dm_labeled.json";
-    a.click();
+    const a    = document.createElement('a');
+    a.href = url; a.download = 'dm_labeled.json'; a.click();
     URL.revokeObjectURL(url);
 
-    const toast = $("toast");
-    toast.textContent = `✓ Exported ${tagged.length} tagged DMs as dm_labeled.json`;
-    toast.classList.add("show");
-    setTimeout(() => toast.classList.remove("show"), 3000);
+    const toast = $('toast');
+    toast.textContent = `✓ Exported ${done.length} tagged DMs`;
+    toast.classList.add('show');
+    setTimeout(() => toast.classList.remove('show'), 3000);
 });
 
-// ─── FILE LOADING ─────────────────────────────────────────────────────────────
-function handleFile(file) {
-    if (!file) return;
-    $("loadStatus").textContent = "Reading " + file.name + "…";
-    const reader = new FileReader();
-    reader.onload = e => {
-        try {
-            loadCSV(e.target.result);
-        } catch (err) {
-            $("loadStatus").textContent = "Error: " + err.message;
-            alert("Failed to parse file: " + err.message);
-        }
-    };
-    reader.readAsText(file);
+// ─── FILE HANDLING ─────────────────────────────────────────────────────────────
+function setupDropzone(dzId, onTextFn) {
+    const dz = $(dzId);
+    dz.addEventListener('click', () => {
+        const inp = document.createElement('input');
+        inp.type = 'file'; inp.accept = '.jsonl,.json';
+        inp.onchange = e => {
+            const f = e.target.files[0];
+            if (!f) return;
+            const r = new FileReader();
+            r.onload = ev => onTextFn(ev.target.result);
+            r.readAsText(f);
+        };
+        inp.click();
+    });
+    dz.addEventListener('dragover',  e => { e.preventDefault(); dz.classList.add('over'); });
+    dz.addEventListener('dragleave', ()  => dz.classList.remove('over'));
+    dz.addEventListener('drop', e => {
+        e.preventDefault(); dz.classList.remove('over');
+        const f = e.dataTransfer.files[0];
+        if (!f) return;
+        const r = new FileReader();
+        r.onload = ev => onTextFn(ev.target.result);
+        r.readAsText(f);
+    });
 }
 
-const dz = $("dropzone");
-dz.addEventListener("click", () => {
-    const inp = document.createElement("input");
-    inp.type = "file"; inp.accept = ".csv";
-    inp.onchange = e => handleFile(e.target.files[0]);
-    inp.click();
-});
-dz.addEventListener("dragover",  e => { e.preventDefault(); dz.classList.add("over"); });
-dz.addEventListener("dragleave", () => dz.classList.remove("over"));
-dz.addEventListener("drop", e => {
-    e.preventDefault(); dz.classList.remove("over");
-    handleFile(e.dataTransfer.files[0]);
-});
+setupDropzone('dzJsonl',     text => loadJSONL(text));
+setupDropzone('dzPreLabels', text => loadPreLabels(text));
 </script>
 </body>
 </html>

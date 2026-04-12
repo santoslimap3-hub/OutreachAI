@@ -138,7 +138,16 @@ function buildMarkdown(entries) {
         lines.push('');
 
         // ── Content section ──
-        if (entry.type === 'post') {
+        if (entry.type === 'dm') {
+            lines.push('**DM with:** ' + (entry.partnerName || '—'));
+            if (entry.conversation && entry.conversation.length > 0) {
+                lines.push('');
+                entry.conversation.forEach(function(m) {
+                    var speaker = m.role === 'bot' ? 'Scott' : (entry.partnerName || 'Lead');
+                    lines.push(blockQuote('[' + speaker + ']: ' + m.text.substring(0, 200)));
+                });
+            }
+        } else if (entry.type === 'post') {
             lines.push('**Post by:** ' + (entry.postAuthor || '—'));
             lines.push('**Title:**   ' + (entry.postTitle  || '—'));
             if (entry.postBodyPreview) {
@@ -161,6 +170,9 @@ function buildMarkdown(entries) {
         lines.push('');
         lines.push('| Field | Value |');
         lines.push('|---|---|');
+        if (entry.tags.dm_stage !== undefined) {
+            lines.push('| **DM Stage** | ' + (entry.tags.dm_stage || 'non-sales') + ' |');
+        }
         lines.push('| **Tone** | ' + (entry.tags.tone_tags || []).join(', ') + ' |');
         lines.push('| **Intent** | ' + (entry.tags.intent || '—') + ' |');
         lines.push('| **Sales Stage** | ' + (entry.tags.sales_stage || '—') + ' |');
@@ -184,15 +196,20 @@ function buildMarkdown(entries) {
     lines.push('| # | Type | Author | Intent | Stage | Tone |');
     lines.push('|---|---|---|---|---|---|');
     entries.forEach(function(entry, i) {
-        var author = entry.type === 'post'
-            ? (entry.postAuthor || '—')
-            : (entry.commentAuthor || '—');
+        var author = entry.type === 'dm'
+            ? (entry.partnerName || '—')
+            : entry.type === 'post'
+                ? (entry.postAuthor    || '—')
+                : (entry.commentAuthor || '—');
+        var stageCol = entry.tags.dm_stage !== undefined
+            ? (entry.tags.dm_stage || 'non-sales') + ' / ' + (entry.tags.sales_stage || '—')
+            : (entry.tags.sales_stage || '—');
         lines.push(
             '| ' + (i + 1) +
             ' | ' + typeLabel(entry.type) +
             ' | ' + author +
-            ' | ' + (entry.tags.intent      || '—') +
-            ' | ' + (entry.tags.sales_stage || '—') +
+            ' | ' + (entry.tags.intent || '—') +
+            ' | ' + stageCol +
             ' | ' + (entry.tags.tone_tags || []).join(', ') + ' |'
         );
     });
@@ -202,9 +219,10 @@ function buildMarkdown(entries) {
 }
 
 function typeLabel(type) {
-    if (type === 'post')         return '📄 Post Reply';
-    if (type === 'comment')      return '💬 Comment Reply';
+    if (type === 'post')          return '📄 Post Reply';
+    if (type === 'comment')       return '💬 Comment Reply';
     if (type === 'notif-comment') return '🔔 Notification Reply';
+    if (type === 'dm')            return '✉️  DM Reply';
     return type;
 }
 
