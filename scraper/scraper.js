@@ -81,7 +81,7 @@ async function collectAllPosts(page) {
                             category: categoryEl ? categoryEl.textContent.trim() : "",
                             timestamp: timeEl ? timeEl.textContent.trim().replace(".", "").trim() : "",
                             postUrl: postLink ? postLink.href : null,
-                            body: contentEl ? contentEl.textContent.trim().substring(0, 1000) : "",
+                            body: contentEl ? contentEl.textContent.trim() : "",
                         });
                     });
                     return cards;
