@@ -179,3 +179,5 @@ async function classifyDM(partnerName, messages) {
 }
 
 module.exports = classifyDM;
+module.exports.SYSTEM_PROMPT  = SYSTEM_PROMPT;
+module.exports.buildUserPrompt = buildUserPrompt;

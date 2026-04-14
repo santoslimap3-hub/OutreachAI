@@ -10,12 +10,18 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 // ── Classifier module ──────────────────────────────────────────────────────────
 // Determines tone_tags, intent, and sales_stage for each reply before generation.
 // Lives in ./classify/ — edit that folder to change classification behaviour.
-const classifyReply = require("./classify/tag_classifier");
+const tagClassifier = require("./classify/tag_classifier");
+const classifyReply = tagClassifier;
 
 // ── Session logger ─────────────────────────────────────────────────────────────
-// Writes bot/logs/YYYY-MM-DD_HHMMSS_session.md after every cycle.
+// Writes data/logs/YYYY-MM-DD_HHMMSS_session.md after every cycle.
 // Share that file with the client to review classifier tag choices.
 const sessionLog = require("./logger/session_log");
+
+// ── Training data logger ───────────────────────────────────────────────────────
+// Appends to data/logs/post_comment_log.json for every reply — persists across runs.
+// Used to build a fine-tuning dataset; Scott fills in the "feedback" field per entry.
+const trainingLog = require("./logger/training_log");
 
 const REPLIED_FILE = path.join(__dirname, "replied_posts.json");
 
@@ -25,9 +31,9 @@ const REPLIED_FILE = path.join(__dirname, "replied_posts.json");
 const { INTENTS: INTENT_DEFS, SALES_STAGES: STAGE_DEFS } = require("./classify/tags");
 
 function buildReplySystemPrompt(tags, situation) {
-    var situationLabel = situation === "comment"
-        ? "Replying to a comment on a Skool post."
-        : "Replying to a Skool post.";
+    var situationLabel = situation === "comment" ?
+        "Replying to a comment on a Skool post." :
+        "Replying to a Skool post.";
 
     return [
         "You are Jack Walford, appointment setter for Answer 42 and Self-Improvement Nation on Skool.",
@@ -232,7 +238,7 @@ async function classifyPosts(posts) {
 
     var completion = await openai.chat.completions.create({
         model: process.env.OPENAI_MODEL || "gpt-4o",
-        max_tokens: 1000,
+        max_completion_tokens: 1000,
         response_format: { type: "json_object" },
         messages: [{
             role: "system",
@@ -434,12 +440,13 @@ async function generateReply(post) {
     console.log("🤖 Classifying post...");
 
     // ── Step 1: Classify the post to determine tone/intent/stage ──
-    var tags = await classifyReply({
+    var classifierContext = {
         postAuthor: post.author,
-        postTitle:  post.title,
-        postBody:   post.body,
-        thread:     post.scrapedComments || [],
-    });
+        postTitle: post.title,
+        postBody: post.body,
+        thread: post.scrapedComments || [],
+    };
+    var tags = await classifyReply(classifierContext);
     console.log("  🏷️  intent=" + tags.intent + " | stage=" + tags.sales_stage + " | tone=" + tags.tone_tags.join(", "));
     if (tags.reasoning) console.log("  💭 " + tags.reasoning);
     console.log("");
@@ -465,10 +472,11 @@ async function generateReply(post) {
 
     // ── Step 3: Build system prompt with classified tags injected ──
     var systemPrompt = buildReplySystemPrompt(tags, "post");
+    var userMessage  = userParts.join("\n") + "\n\nWrite a short, natural reply to this post.";
 
     var messages = [
         { role: "system", content: systemPrompt },
-        { role: "user",   content: userParts.join("\n") + "\n\nWrite a short, natural reply to this post." },
+        { role: "user",   content: userMessage },
     ];
 
     console.log("═══════════════ PROMPT BEING SENT ═══════════════");
@@ -479,21 +487,37 @@ async function generateReply(post) {
     });
     console.log("═════════════════════════════════════════════════\n");
 
+    var model = process.env.OPENAI_MODEL || "gpt-4o";
     var completion = await openai.chat.completions.create({
-        model: process.env.OPENAI_MODEL || "gpt-4o",
-        max_tokens: 300,
+        model: model,
+        max_completion_tokens: 300,
         messages: messages,
     });
     var replyText = completion.choices[0].message.content;
 
-    // ── Log this entry for client review ──
+    // ── Log this entry for client review (session file) ──
     sessionLog.addEntry({
-        type:            "post",
-        postAuthor:      post.author,
-        postTitle:       post.title,
+        type: "post",
+        postAuthor: post.author,
+        postTitle: post.title,
         postBodyPreview: post.body.substring(0, 300),
-        tags:            tags,
-        reply:           replyText,
+        tags: tags,
+        reply: replyText,
+    });
+
+    // ── Append to persistent fine-tuning training log ──
+    trainingLog.appendPostEntry({
+        type:      "post",
+        community: post.community || "Self Improvement Nation",
+        post:      { author: post.author, title: post.title, body: post.body },
+        comment:   null,
+        classifierSystemPrompt: tagClassifier.SYSTEM_PROMPT,
+        classifierUserMessage:  tagClassifier.buildUserPrompt(classifierContext),
+        tags:      tags,
+        generationSystemPrompt: systemPrompt,
+        generationUserMessage:  userMessage,
+        model:     model,
+        reply:     replyText,
     });
 
     return replyText;
@@ -867,7 +891,7 @@ async function classifyComments(comments) {
         try {
             var completion = await openai.chat.completions.create({
                 model: process.env.OPENAI_MODEL || "gpt-4o",
-                max_tokens: 800,
+                max_completion_tokens: 800,
                 response_format: { type: "json_object" },
                 messages: [{
                     role: "system",
@@ -951,14 +975,15 @@ async function generateCommentReply(comment) {
     console.log("🤖 Classifying comment by " + comment.author + "...");
 
     // ── Step 1: Classify the comment to determine tone/intent/stage ──
-    var tags = await classifyReply({
-        postAuthor:    comment.postAuthor  || "Unknown",
-        postTitle:     comment.postTitle   || "Unknown",
-        postBody:      comment.postBody    || "",
+    var classifierContext = {
+        postAuthor: comment.postAuthor || "Unknown",
+        postTitle: comment.postTitle || "Unknown",
+        postBody: comment.postBody || "",
         commentAuthor: comment.author,
-        commentText:   comment.text,
-        thread:        comment.thread      || [],
-    });
+        commentText: comment.text,
+        thread: comment.thread || [],
+    };
+    var tags = await classifyReply(classifierContext);
     console.log("  🏷️  intent=" + tags.intent + " | stage=" + tags.sales_stage + " | tone=" + tags.tone_tags.join(", "));
     if (tags.reasoning) console.log("  💭 " + tags.reasoning);
     console.log("");
@@ -968,7 +993,7 @@ async function generateCommentReply(comment) {
 
     userParts.push("--- POST ---");
     userParts.push("Author: " + (comment.postAuthor || "Unknown"));
-    userParts.push("Title: " + (comment.postTitle   || "Unknown"));
+    userParts.push("Title: " + (comment.postTitle || "Unknown"));
     if (comment.postBody) {
         userParts.push("");
         userParts.push(comment.postBody);
@@ -994,10 +1019,11 @@ async function generateCommentReply(comment) {
 
     // ── Step 3: Build system prompt with classified tags injected ──
     var systemPrompt = buildReplySystemPrompt(tags, "comment");
+    var userMessage  = userParts.join("\n") + "\n\nWrite a short, natural reply to this comment.";
 
     var messages = [
         { role: "system", content: systemPrompt },
-        { role: "user",   content: userParts.join("\n") + "\n\nWrite a short, natural reply to this comment." },
+        { role: "user",   content: userMessage },
     ];
 
     console.log("═══════════════ PROMPT BEING SENT ═══════════════");
@@ -1008,22 +1034,46 @@ async function generateCommentReply(comment) {
     });
     console.log("═════════════════════════════════════════════════\n");
 
+    var model = process.env.OPENAI_MODEL || "gpt-4o";
     var completion = await openai.chat.completions.create({
-        model: process.env.OPENAI_MODEL || "gpt-4o",
-        max_tokens: 300,
+        model: model,
+        max_completion_tokens: 300,
         messages: messages,
     });
     var replyText = completion.choices[0].message.content;
 
-    // ── Log this entry for client review ──
+    // ── Log this entry for client review (session file) ──
     sessionLog.addEntry({
-        type:          "comment",
-        postAuthor:    comment.postAuthor || "Unknown",
-        postTitle:     comment.postTitle  || "Unknown",
+        type: "comment",
+        postAuthor: comment.postAuthor || "Unknown",
+        postTitle: comment.postTitle || "Unknown",
         commentAuthor: comment.author,
-        commentText:   comment.text.substring(0, 300),
-        tags:          tags,
-        reply:         replyText,
+        commentText: comment.text.substring(0, 300),
+        tags: tags,
+        reply: replyText,
+    });
+
+    // ── Append to persistent fine-tuning training log ──
+    trainingLog.appendPostEntry({
+        type:      comment.type || "comment",
+        community: comment.community || "Self Improvement Nation",
+        post: {
+            author: comment.postAuthor || "Unknown",
+            title:  comment.postTitle  || "Unknown",
+            body:   comment.postBody   || "",
+        },
+        comment: {
+            author: comment.author,
+            text:   comment.text,
+            thread: comment.thread || [],
+        },
+        classifierSystemPrompt: tagClassifier.SYSTEM_PROMPT,
+        classifierUserMessage:  tagClassifier.buildUserPrompt(classifierContext),
+        tags:      tags,
+        generationSystemPrompt: systemPrompt,
+        generationUserMessage:  userMessage,
+        model:     model,
+        reply:     replyText,
     });
 
     return replyText;

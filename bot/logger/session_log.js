@@ -4,7 +4,7 @@
  * Records every post/comment the bot replies to, along with the
  * classifier tags chosen, and the generated reply.
  *
- * Two files are written to bot/logs/ after each cycle:
+ * Two files are written to data/logs/ after each cycle:
  *   - YYYY-MM-DD_HHMMSS_session.json  (raw data — for programmatic use)
  *   - YYYY-MM-DD_HHMMSS_session.md    (human-readable — share with client)
  *
@@ -19,7 +19,7 @@
 const fs   = require('fs');
 const path = require('path');
 
-const LOGS_DIR = path.join(__dirname, '..', 'logs');
+const LOGS_DIR = path.join(__dirname, '..', '..', 'data', 'logs');
 
 var entries      = [];
 var sessionStart = new Date();
@@ -67,7 +67,7 @@ function writeLogs() {
     fs.writeFileSync(mdPath,   buildMarkdown(entries),          'utf8');
 
     console.log('\n📄 Session log updated:');
-    console.log('   ' + entries.length + ' entries | MD → bot/logs/' + sessionId + '_session.md\n');
+    console.log('   ' + entries.length + ' entries | MD → data/logs/' + sessionId + '_session.md\n');
 
     return { jsonPath: jsonPath, mdPath: mdPath };
 }

@@ -1,0 +1,109 @@
+[
+  {
+    "correction_id": "1__Yes_the_happiest_man_on_earth_",
+    "timestamp": "2026-04-14T03:54:23.555Z",
+    "lead_name": "Lead",
+    "scott_reply": "Yes... the happiest man on earth.",
+    "last_10_messages": [
+      {
+        "role": "user",
+        "text": "Happy for you, you deserve it all"
+      },
+      {
+        "role": "assistant",
+        "text": "I never had such a profound connection anywhere else in the world, not even with my family back home... there's two families... the one your soul choses to experience when you're born, the one that finds you... the other one is the one you find in your path and create..."
+      },
+      {
+        "role": "user",
+        "text": "I laugh sometimes thinking about how intense our connections are\nMasa and I got married and divorced, fought and cried like a couple\n😆😂"
+      },
+      {
+        "role": "assistant",
+        "text": "Thanks, I'm just trying to help them... just give them what they want... money is energy, and they need that energy to fulfill their current season on their path..."
+      },
+      {
+        "role": "user",
+        "text": "Then we got back together\nMarriage Round 2"
+      },
+      {
+        "role": "assistant",
+        "text": "Did you get something on the divorce?"
+      },
+      {
+        "role": "user",
+        "text": "Remember on the rooftop of my apartment, we talked about the French monk"
+      }
+    ],
+    "previous_tags": {
+      "dm_stage": null,
+      "nonsales": true,
+      "tone_tags": [
+        "casual",
+        "bonding-rapport",
+        "hype",
+        "brotherhood"
+      ],
+      "intent": "acknowledgement",
+      "sales_stage": "nurture"
+    },
+    "new_tags": {
+      "dm_stage": null,
+      "nonsales": true,
+      "tone_tags": [
+        "casual",
+        "bonding-rapport",
+        "brotherhood"
+      ],
+      "intent": "acknowledgement",
+      "sales_stage": "nurture"
+    }
+  },
+  {
+    "correction_id": "0__Josh_ready_for_our_call_in_3_hours_and_",
+    "timestamp": "2026-04-14T03:58:14.992Z",
+    "lead_name": "Lead",
+    "scott_reply": "Josh, ready for our call in 3 hours and 10 minutes?",
+    "last_10_messages": [
+      {
+        "role": "user",
+        "text": "ah sorry man i should have updated it but i can do any time besides the one you chose ill cancel that one mb"
+      },
+      {
+        "role": "assistant",
+        "text": "No worries, just rescheduled it...\nFriday the 20th, 4 AM, Bali time. Let me know if the current one works for you, bro."
+      },
+      {
+        "role": "user",
+        "text": "It says you scheduled for the 19th do you want me to move it to the 20th same time?"
+      },
+      {
+        "role": "assistant",
+        "text": "No, it's the 19th for you, but it's the 20th for me. We are on opposites sides of the world, bro, I'm in Bali, it's like 11 hours of difference or somethin like that with the US.\n*something\nIt should be correct.\nRight now for me it's the 18th... for you must be still the 17th.\nI'm in the future, baby! 😂"
+      },
+      {
+        "role": "user",
+        "text": "oh haha alright see you then!"
+      }
+    ],
+    "previous_tags": {
+      "dm_stage": "nurture-free",
+      "nonsales": false,
+      "tone_tags": [
+        "direct",
+        "casual"
+      ],
+      "intent": "close-to-call",
+      "sales_stage": "ask"
+    },
+    "new_tags": {
+      "dm_stage": "offer-call",
+      "nonsales": false,
+      "tone_tags": [
+        "direct",
+        "casual"
+      ],
+      "intent": "close-to-call",
+      "sales_stage": "ask"
+    }
+  }
+]

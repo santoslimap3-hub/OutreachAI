@@ -7,10 +7,16 @@
  * reviews / corrects instead of labeling 4,810 entries from scratch.
  *
  * Usage:
- *   node prelabel_dms.js <path/to/finetune_data_v5.jsonl> [output.json]
+ *   node prelabel_dms.js [path/to/finetune_data_v5.jsonl] [output.json]
+ *
+ * Defaults to ../data/finetune_data_v5.jsonl (the full 5,240-entry dataset).
  *
  * The script is RESUMABLE — re-run after interruption and it skips
  * entries that were already labeled in the output file.
+ *
+ * WhatsApp detection: any DM conversation where the content contains
+ * WhatsApp signals (see WHATSAPP_SIGNALS below) is fully classified by the model
+ * for tone/intent/sales_stage, but dm_stage is forced to null (nonsales=true).
  */
 
 require('dotenv').config();
@@ -23,7 +29,29 @@ const JSONL_PATH    = process.argv[2] || path.join(__dirname, '../data/finetune_
 const OUTPUT_PATH   = process.argv[3] || path.join(path.dirname(JSONL_PATH), 'dm_prelabeled.json');
 const MODEL         = process.env.CLASSIFIER_MODEL || process.env.OPENAI_MODEL || 'gpt-4o-mini';
 const CONCURRENCY   = parseInt(process.env.CONCURRENCY || '5', 10);  // parallel API calls
-const SAVE_EVERY    = 50;  // save to disk every N completions
+const SAVE_EVERY    = 25;  // save to disk every N completions
+
+// Shared rate-limit state across all workers — when one worker hits 429,
+// all workers pause together instead of hammering the API simultaneously.
+let rateLimitedUntil = 0;  // epoch ms — workers wait until this time before retrying
+
+// ── WHATSAPP DETECTION ─────────────────────────────────────────────────────────
+// DM conversations matching these patterns are still fully classified by the model,
+// but their dm_stage is forced to null (nonsales=true) after classification.
+const WHATSAPP_SIGNALS = [
+    /\bwhatsapp\b/i,
+    /\bwhats app\b/i,
+    /\bwa\b.*\bchat\b/i,
+    /\btelegram\b/i,
+    /send.*on (whatsapp|wa|telegram)/i,
+    /chat.*on (whatsapp|wa|telegram)/i,
+    /message.*on (whatsapp|wa|telegram)/i,
+    /SITUATION:\s*WhatsApp/i,
+];
+
+function isWhatsApp(allText) {
+    return WHATSAPP_SIGNALS.some(re => re.test(allText));
+}
 
 const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -56,37 +84,47 @@ function parseDMs(filePath) {
         try { d = JSON.parse(line.trim()); } catch (e) { continue; }
 
         const msgs = d.messages || [];
-        if (msgs.length < 3) continue;
+        if (msgs.length < 2) continue;
 
-        // Skip post/comment entries
+        // Skip post/comment and new-member entries
         const firstUser = (msgs[1] || {}).content || '';
         if (firstUser.includes('--- POST ---') || firstUser.includes('--- NEW MEMBER ---')) continue;
 
-        const lastMsg = msgs[msgs.length - 1];
-        if (lastMsg.role !== 'assistant') continue;
+        // The last assistant message is what we classify
+        let lastAssistantIdx = -1;
+        for (let i = msgs.length - 1; i >= 0; i--) {
+            if (msgs[i].role === 'assistant') { lastAssistantIdx = i; break; }
+        }
+        if (lastAssistantIdx < 0) continue;
 
-        // Extract sender name if present (format: "[Name]: message" or just message)
+        const lastMsg    = msgs[lastAssistantIdx];
+        const scottReply = (lastMsg.content || '').trim();
+        if (!scottReply) continue;
+
+        const key = scottReply.substring(0, 80).replace(/\s+/g, ' ').trim();
+        if (!key) continue;
+
+        // Full conversation text (for WhatsApp detection)
+        const allText = msgs.map(m => m.content || '').join('\n');
+
         // Try to infer lead name from first user message
         const leadName = extractLeadName(msgs);
 
         // Build context: last 4 turns before Scott's reply
-        const histStart = Math.max(1, msgs.length - 5);
+        const histStart = Math.max(1, lastAssistantIdx - 3);
         const history = [];
-        for (let i = histStart; i < msgs.length - 1; i++) {
+        for (let i = histStart; i < lastAssistantIdx; i++) {
             const speaker = msgs[i].role === 'assistant' ? 'Scott' : (leadName || 'Lead');
             const text = (msgs[i].content || '').substring(0, 250);
             history.push(`${speaker}: ${text}`);
         }
-
-        const scottReply = lastMsg.content || '';
-        const key = scottReply.substring(0, 80).trim().replace(/\s+/g, ' ');
-        if (!key) continue;
 
         dms.push({
             key,
             leadName: leadName || 'Lead',
             context: history.join('\n'),
             reply: scottReply.substring(0, 400),
+            whatsapp: isWhatsApp(allText),
         });
     }
 
@@ -112,7 +150,18 @@ async function classify(dm) {
         ? `[Prior messages]\n${dm.context}\n\n[Scott's reply — classify this]\n${dm.reply}`
         : `[Scott's reply — classify this]\n${dm.reply}`;
 
-    for (let attempt = 1; attempt <= 3; attempt++) {
+    const isNewModel = /^(o\d|gpt-5)/i.test(MODEL);
+    const tokenParam = isNewModel
+        ? { max_completion_tokens: 150 }
+        : { max_tokens: 150 };
+
+    const MAX_ATTEMPTS = 6;
+
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+        // If another worker already set a global rate-limit pause, wait it out first
+        const waitMs = rateLimitedUntil - Date.now();
+        if (waitMs > 0) await sleep(waitMs);
+
         try {
             const res = await client.chat.completions.create({
                 model:       MODEL,
@@ -120,7 +169,7 @@ async function classify(dm) {
                     { role: 'system', content: SYSTEM },
                     { role: 'user',   content: userContent },
                 ],
-                max_tokens:  150,
+                ...tokenParam,
                 temperature: 0,
             });
 
@@ -129,20 +178,47 @@ async function classify(dm) {
             const parsed = JSON.parse(raw);
 
             // Normalize
-            if (typeof parsed.nonsales !== 'boolean') parsed.nonsales = !parsed.dm_stage;
             if (!Array.isArray(parsed.tone_tags))     parsed.tone_tags = [];
             if (!parsed.intent)      parsed.intent      = '';
             if (!parsed.sales_stage) parsed.sales_stage = '';
+
+            // WhatsApp conversations: full AI labeling but dm_stage always null
+            if (dm.whatsapp) {
+                parsed.nonsales      = true;
+                parsed.dm_stage      = null;
+                parsed.auto_whatsapp = true;
+            } else {
+                if (typeof parsed.nonsales !== 'boolean') parsed.nonsales = !parsed.dm_stage;
+            }
+
             parsed.ai_suggested = true;
             parsed.lead_name    = dm.leadName;
             return parsed;
 
         } catch (err) {
-            if (attempt === 3) {
-                console.error(`\n  ✗ Failed after 3 attempts: ${err.message}`);
+            const is429 = err.status === 429 || /429|quota|rate.?limit/i.test(err.message);
+
+            if (attempt === MAX_ATTEMPTS) {
+                process.stdout.write(`\n  ✗ Failed after ${MAX_ATTEMPTS} attempts: ${err.message}\n`);
                 return null;
             }
-            await sleep(1200 * attempt);
+
+            if (is429) {
+                // Exponential backoff: 15s, 30s, 60s, 120s, 240s
+                // Also parse Retry-After header if available
+                let retryAfterMs = Math.min(15000 * Math.pow(2, attempt - 1), 240000);
+                const retryAfter = err.headers?.['retry-after'];
+                if (retryAfter) retryAfterMs = Math.max(retryAfterMs, parseInt(retryAfter, 10) * 1000);
+
+                // Set global pause so ALL workers back off together
+                rateLimitedUntil = Date.now() + retryAfterMs;
+                const retryAfterSec = Math.round(retryAfterMs / 1000);
+                process.stdout.write(`\n  ⏳ Rate limited — all workers pausing ${retryAfterSec}s (attempt ${attempt}/${MAX_ATTEMPTS})\n`);
+                await sleep(retryAfterMs);
+            } else {
+                // Non-429 error: short linear backoff
+                await sleep(2000 * attempt);
+            }
         }
     }
 }
@@ -173,7 +249,11 @@ async function main() {
     console.log('─────────────────────────────────────────\n');
 
     const dms = parseDMs(JSONL_PATH);
-    console.log(`Found ${dms.length} DM entries to label\n`);
+    const waCount = dms.filter(d => d.whatsapp).length;
+    console.log(`Found ${dms.length} DM entries to label`);
+    console.log(`  ↳ ${waCount} WhatsApp conversations → labeled normally but dm_stage forced null`);
+    console.log(`  ↳ ${dms.length - waCount} regular Skool DMs`);
+    console.log(`  ↳ All ${dms.length} will call ${MODEL}\n`);
 
     // Load existing progress (for resuming)
     let results = {};
@@ -254,6 +334,15 @@ async function main() {
         }
     });
 
+    // Save on Ctrl+C so progress is never lost mid-run
+    process.on('SIGINT', () => {
+        console.log('\n\n  Interrupted — saving progress…');
+        saveResults(results, total);
+        const done = Object.keys(results).length;
+        console.log(`  Saved ${done}/${total} labels. Re-run to resume.\n`);
+        process.exit(0);
+    });
+
     await Promise.all(workers);
 
     const totalSec  = Math.round((Date.now() - startAt) / 1000);
@@ -263,8 +352,13 @@ async function main() {
 
     saveResults(results, total);
 
-    const avgRate = processed > 0 ? (totalSec / processed).toFixed(2) : '--';
-    console.log(`\n\n✓ Done — ${Object.keys(results).length}/${total} labeled in ${totalTime}  ·  avg ${avgRate}s/item${failed > 0 ? `  ·  ${failed} failed` : ''}`);
+    const finalLabels  = Object.values(results);
+    const waLabeled    = finalLabels.filter(l => l.auto_whatsapp).length;
+    const avgRate      = processed > 0 ? (totalSec / processed).toFixed(2) : '--';
+
+    console.log(`\n\n✓ Done — ${Object.keys(results).length}/${total} labeled in ${totalTime}`);
+    console.log(`  ↳ ${waLabeled} WhatsApp conversations labeled (dm_stage=null)`);
+    console.log(`  ↳ avg ${avgRate}s/item via ${MODEL}${failed > 0 ? `  ·  ${failed} failed` : ''}`);
     console.log(`\n  Output saved to:\n  ${OUTPUT_PATH}`);
     console.log('\n  Next: drop dm_prelabeled.json into dm_tagger.html');
     console.log('        to apply AI suggestions before Scott reviews.\n');

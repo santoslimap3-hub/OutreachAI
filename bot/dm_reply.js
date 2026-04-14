@@ -9,28 +9,32 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 // ── MOTHER AI system ───────────────────────────────────────────────────────────
 // Same classify → tag-aware prompt → fine-tuned model pipeline as auto_reply.js
 // Extended with the 8-step DM appointment setting workflow stage.
-const classifyDM = require("./classify/dm_classifier");
-const sessionLog = require("./logger/session_log");
+const dmClassifier = require("./classify/dm_classifier");
+const classifyDM   = dmClassifier;
+const sessionLog   = require("./logger/session_log");
+const trainingLog  = require("./logger/training_log");
 const { INTENTS: INTENT_DEFS, SALES_STAGES: STAGE_DEFS } = require("./classify/tags");
 
-const REPLIED_DMS_FILE = path.join(__dirname, "replied_dms.json");
+const STATE_FILE = path.join(__dirname, "conversation_state.json");
 
 const CONFIG = {
     email: process.env.SKOOL_EMAIL,
     password: process.env.SKOOL_PASSWORD,
     headless: false,
-    dryRun: false, // type DM but don't send (for testing)
-    // Active period: bot responds to DMs
-    activeMinMs: 10 * 60 * 1000, // 10 minutes
-    activeMaxMs: 60 * 60 * 1000, // 1 hour
-    // Inactive period: bot ignores DMs
-    inactiveMinMs: 20 * 60 * 1000, // 20 minutes
-    inactiveMaxMs: 90 * 60 * 1000, // 1.5 hours
-    // Random delay before replying during active period
-    replyDelayMinMs: 0, // 0 seconds
-    replyDelayMaxMs: 60 * 1000, // 60 seconds
-    // How often to poll for new messages during active period
-    pollIntervalMs: 15 * 1000, // 15 seconds between polls
+    dryRun: false,
+    // Active period
+    activeMinMs:   10 * 60 * 1000,   // 10 min
+    activeMaxMs:   60 * 60 * 1000,   //  1 hr
+    // Inactive period
+    inactiveMinMs: 20 * 60 * 1000,   // 20 min
+    inactiveMaxMs: 90 * 60 * 1000,   // 1.5 hr
+    // Delay before replying — realistic human range
+    replyDelayMinMs:  8 * 1000,      //  8 sec  (never instant)
+    replyDelayMaxMs:  4 * 60 * 1000, //  4 min
+    // Poll frequency during active period
+    pollIntervalMs:   2 * 60 * 1000, //  2 min between polls
+    // Max conversations to reply to per poll (spread replies out naturally)
+    maxRepliesPerPoll: 3,
 };
 
 function randomBetween(min, max) {
@@ -46,6 +50,43 @@ function formatMs(ms) {
     return min > 0 ? min + "m " + sec + "s" : sec + "s";
 }
 
+// ─── HUMAN-LIKE TYPING ───────────────────────────────────
+// Types text with variable inter-character delays, brief thinking pauses at
+// punctuation, and a rare typo+backspace to look like a real person.
+
+async function humanType(page, text) {
+    for (var i = 0; i < text.length; i++) {
+        var ch = text[i];
+        await page.keyboard.type(ch);
+
+        // Base delay: space after word = slightly longer, punctuation = pause, else fast
+        var delay;
+        if (ch === ' ') {
+            delay = randomBetween(60, 160);
+        } else if (/[.!?]/.test(ch)) {
+            delay = randomBetween(120, 350); // end of sentence — brief think
+        } else if (/[,;:]/.test(ch)) {
+            delay = randomBetween(80, 200);
+        } else {
+            delay = randomBetween(28, 110);
+        }
+
+        // ~3% chance of a thinking pause mid-sentence (picked up phone, glanced away)
+        if (Math.random() < 0.03) delay += randomBetween(600, 2200);
+
+        await sleep(delay);
+
+        // ~0.4% chance of fat-finger typo → backspace and retype
+        if (Math.random() < 0.004 && i < text.length - 1) {
+            var fat = 'qwertyuiopasdfghjklzxcvbnm';
+            await page.keyboard.type(fat[Math.floor(Math.random() * fat.length)]);
+            await sleep(randomBetween(250, 700)); // realise the mistake
+            await page.keyboard.press('Backspace');
+            await sleep(randomBetween(80, 200));
+        }
+    }
+}
+
 async function countdown(ms, label) {
     var totalSec = Math.ceil(ms / 1000);
     for (var remaining = totalSec; remaining > 0; remaining--) {
@@ -58,24 +99,50 @@ async function countdown(ms, label) {
     process.stdout.write("\r" + label + " done!                    \n");
 }
 
-function loadRepliedDMs() {
+// ── Per-person conversation state ────────────────────────────────────────────
+// Format: { "Scott Northwolf": { lastPreview, lastPartnerMsg, lastReplyText, lastRepliedAt } }
+// "lastPreview"    — the conversation list preview we last saw when we replied/skipped.
+//                   If the current preview still matches → nothing new → skip.
+// "lastPartnerMsg" — what THEY last said before our reply (backup match for slow preview refresh).
+// "lastReplyText"  — what WE sent (for logging / dedup).
+// "lastRepliedAt"  — unix ms timestamp of our last reply (for rate-limit checks).
+
+function loadState() {
     try {
-        if (fs.existsSync(REPLIED_DMS_FILE)) {
-            var data = JSON.parse(fs.readFileSync(REPLIED_DMS_FILE, "utf8"));
-            console.log("Loaded " + data.length + " previously replied DM keys from disk");
-            return new Set(data);
+        if (fs.existsSync(STATE_FILE)) {
+            var data = JSON.parse(fs.readFileSync(STATE_FILE, "utf8"));
+            var n = Object.keys(data).length;
+            console.log("Loaded conversation state for " + n + " people");
+            return data;
         }
     } catch (e) {
-        console.warn("Could not load replied_dms.json, starting fresh:", e.message);
+        console.warn("Could not load conversation_state.json, starting fresh:", e.message);
     }
-    return new Set();
+    return {};
 }
 
-function saveRepliedDMs(repliedSet) {
-    // Atomic write: write to .tmp then rename so Ctrl+C can never corrupt the file
-    var tmp = REPLIED_DMS_FILE + '.tmp';
-    fs.writeFileSync(tmp, JSON.stringify(Array.from(repliedSet), null, 2));
-    fs.renameSync(tmp, REPLIED_DMS_FILE);
+function saveState(state) {
+    var tmp = STATE_FILE + '.tmp';
+    fs.writeFileSync(tmp, JSON.stringify(state, null, 2));
+    fs.renameSync(tmp, STATE_FILE);
+}
+
+function hasNewMessage(state, convName, currentPreview) {
+    var s = state[convName];
+    if (!s) return true; // never spoken to this person
+    var prev = (currentPreview || '').substring(0, 150);
+    // Skip if preview matches either our last reply or their last message we handled
+    return prev !== s.lastPreview && prev !== s.lastPartnerMsg;
+}
+
+function markHandled(state, convName, opts) {
+    // opts: { lastPreview, lastPartnerMsg, lastReplyText }
+    state[convName] = {
+        lastPreview:    (opts.lastPreview    || '').substring(0, 150),
+        lastPartnerMsg: (opts.lastPartnerMsg || '').substring(0, 150),
+        lastReplyText:  (opts.lastReplyText  || '').substring(0, 150),
+        lastRepliedAt:  Date.now(),
+    };
 }
 
 // ─── DISMISS OVERLAYS ────────────────────────────────────
@@ -120,18 +187,16 @@ async function login(page) {
     await page.goto("https://www.skool.com/login", { waitUntil: "networkidle" });
     await sleep(1000);
 
-    // Dump page state to diagnose login issues
+    // Snapshot page state — only used if login fails
     var pageState = await page.evaluate(function() {
         var inputs = Array.from(document.querySelectorAll('input')).map(function(el) {
-            return { type: el.type, name: el.name, id: el.id, placeholder: el.placeholder };
+            return { type: el.type, name: el.name, id: el.id };
         });
         var buttons = Array.from(document.querySelectorAll('button')).map(function(el) {
-            return { type: el.type, text: el.textContent.trim().substring(0, 40), class: (el.className||'').substring(0, 60) };
+            return { type: el.type, text: el.textContent.trim().substring(0, 30) };
         });
-        return { inputs: inputs, buttons: buttons, url: window.location.href };
+        return { inputs: inputs, buttons: buttons };
     });
-    console.log("Login page inputs:", JSON.stringify(pageState.inputs));
-    console.log("Login page buttons:", JSON.stringify(pageState.buttons));
 
     // Click + type (not fill) so React's onChange events fire correctly
     await page.click('#email');
@@ -165,7 +230,10 @@ async function login(page) {
             }
         } catch (e) { /* try next */ }
     }
-    if (!submitted) throw new Error("Could not find submit button on login page");
+    if (!submitted) {
+        console.log("Login page state:", JSON.stringify(pageState));
+        throw new Error("Could not find submit button on login page");
+    }
 
     // Wait for navigation away from login page (up to 20s)
     try {
@@ -173,7 +241,8 @@ async function login(page) {
     } catch (e) { /* navigation may have already completed */ }
 
     if (page.url().includes('/login')) {
-        console.log("Still on login page. Waiting 10s so you can see the browser...");
+        console.log("Login page state:", JSON.stringify(pageState));
+        console.log("Pausing 10s so you can read the browser window...");
         await sleep(10000);
         var pageText = await page.evaluate(function() {
             return document.body.innerText.substring(0, 400);
@@ -182,40 +251,82 @@ async function login(page) {
     }
     console.log("Logged in");
 
-    // Navigate home and try to read the bot's display name from the page
-    // without opening a dropdown — avoids leaving overlay cruft behind
+    // ── Get the bot's display name ──────────────────────────────────────────────
+    // BOT_NAME in .env is the most reliable override — set it if auto-detection
+    // ever picks up the wrong account (e.g. community owner instead of bot account).
+    if (process.env.BOT_NAME) {
+        console.log("Bot account name: " + process.env.BOT_NAME + " (from BOT_NAME env)\n");
+        return process.env.BOT_NAME;
+    }
+
+    // Navigate home and try to read the bot's display name from the page.
     await page.goto("https://www.skool.com", { waitUntil: "domcontentloaded" });
     await sleep(3000);
 
-    // Try to get name without opening the dropdown first (from existing DOM links)
+    // Strategy 1: look in the top nav / header ONLY — this avoids picking up
+    // community members whose profile links appear first in the page feed.
     var botName = await page.evaluate(function() {
-        var links = document.querySelectorAll('a[href*="/@"]');
-        for (var i = 0; i < links.length; i++) {
-            var text = links[i].textContent.trim();
-            if (text.length > 1 && !text.match(/^\d+$/)) return text;
+        var navSelectors = [
+            'nav a[href*="/@"]',
+            'header a[href*="/@"]',
+            '[class*="TopNav"] a[href*="/@"]',
+            '[class*="NavBar"] a[href*="/@"]',
+            '[class*="Navbar"] a[href*="/@"]',
+            '[class*="Header"] a[href*="/@"]',
+        ];
+        for (var i = 0; i < navSelectors.length; i++) {
+            var links = document.querySelectorAll(navSelectors[i]);
+            for (var j = 0; j < links.length; j++) {
+                var text = links[j].textContent.trim();
+                if (text.length > 1 && !text.match(/^\d+$/)) return text;
+            }
+        }
+        // Strategy 2: look for nav avatar img alt text (Skool sets this to the user's name)
+        var navImgSelectors = [
+            'nav img[alt]', 'header img[alt]',
+            '[class*="TopNav"] img[alt]',
+            '[class*="NavBar"] img[alt]',
+        ];
+        for (var ni = 0; ni < navImgSelectors.length; ni++) {
+            var imgs = document.querySelectorAll(navImgSelectors[ni]);
+            for (var ii = 0; ii < imgs.length; ii++) {
+                var alt = (imgs[ii].getAttribute('alt') || '').trim();
+                if (alt.length > 1 && !/logo|icon/i.test(alt) && !alt.match(/^\d+$/)) return alt;
+            }
         }
         return "";
     });
 
-    // Only open the avatar dropdown if we couldn't get the name passively
+    // Strategy 3: open the avatar dropdown — the dropdown only contains OUR profile info
     if (!botName) {
         var avatarBtn = await page.$('[class*="UserAvatar"], [class*="avatar"], img[class*="Avatar"]');
         if (avatarBtn) {
             await avatarBtn.click();
             await sleep(800);
             botName = await page.evaluate(function() {
-                var links = document.querySelectorAll('a[href*="/@"]');
-                for (var i = 0; i < links.length; i++) {
-                    var text = links[i].textContent.trim();
-                    if (text.length > 1 && !text.match(/^\d+$/)) return text;
+                // Look ONLY inside dropdown/popover elements that just appeared
+                var dropSelectors = [
+                    '[class*="Dropdown"] a[href*="/@"]',
+                    '[class*="Popover"] a[href*="/@"]',
+                    '[class*="Menu"] a[href*="/@"]',
+                    '[class*="Panel"] a[href*="/@"]',
+                ];
+                for (var i = 0; i < dropSelectors.length; i++) {
+                    var links = document.querySelectorAll(dropSelectors[i]);
+                    for (var j = 0; j < links.length; j++) {
+                        var text = links[j].textContent.trim();
+                        if (text.length > 1 && !text.match(/^\d+$/)) return text;
+                    }
                 }
                 return "";
             });
-            // Force-close the dropdown completely before continuing
             await dismissOverlays(page);
         }
     }
 
+    if (!botName) {
+        console.warn("⚠️  Could not detect bot name. Add BOT_NAME=Your Name to .env to fix this.");
+    }
     console.log("Bot account name: " + (botName || "(unknown)") + "\n");
     return botName;
 }
@@ -648,17 +759,18 @@ async function generateDMReply(partnerName, messages) {
     console.log(userMessage.split("\n").map(function(l){ return "      " + l; }).join("\n"));
     console.log("    " + "─".repeat(50));
     console.log("    Generating reply (" + messages.length + " messages in context)...");
+    var model = process.env.OPENAI_MODEL || "gpt-4o";
     var completion = await openai.chat.completions.create({
-        model: process.env.OPENAI_MODEL || "gpt-4o",
+        model: model,
         max_tokens: 300,
         messages: [
             { role: "system", content: systemPrompt },
-            { role: "user", content: userMessage },
+            { role: "user",   content: userMessage },
         ],
     });
     var replyText = completion.choices[0].message.content.trim();
 
-    // ── Step 5: Log ───────────────────────────────────────────────────────────
+    // ── Step 5: Log (session file) ────────────────────────────────────────────
     sessionLog.addEntry({
         type: "dm",
         partnerName: partnerName,
@@ -669,12 +781,28 @@ async function generateDMReply(partnerName, messages) {
         reply: replyText,
     });
 
+    // ── Step 6: Append to persistent fine-tuning training log ─────────────────
+    trainingLog.appendDMEntry({
+        partner:      partnerName,
+        conversation: messages.map(function(m) {
+            return { role: m.role, author: m.role === 'bot' ? 'Scott' : partnerName, text: m.text };
+        }),
+        classifierSystemPrompt: dmClassifier.SYSTEM_PROMPT,
+        classifierUserMessage:  dmClassifier.buildUserPrompt(partnerName, messages),
+        tags:     tags,
+        generationSystemPrompt: systemPrompt,
+        generationUserMessage:  userMessage,
+        model:    model,
+        reply:    replyText,
+        sent:     true,
+    });
+
     return replyText;
 }
 
 // ─── SINGLE POLL: check for unreads and reply ────────────
 
-async function pollAndReply(page, botName, repliedDMs) {
+async function pollAndReply(page, botName, convState) {
     var handled = 0;
 
     // Make sure we're on Skool
@@ -698,19 +826,18 @@ async function pollAndReply(page, botName, repliedDMs) {
     } catch (e) { /* no conversations visible — getConversationList will return empty */ }
     await sleep(300);
 
-    // Get ALL conversations — reply to any where the bot hasn't replied yet.
-    // Skip system notifications (no real name extracted from DOM).
+    // Get ALL conversations — reply to any that have a new message since we last handled them.
     var convList = await getConversationList(page, botName);
     var pendingConvs = convList.conversations.filter(function(c) {
-        // Must have a real person name (notifications tend to have no extractable name)
-        return c.name && c.name.trim().length > 1;
+        if (!c.name || c.name.trim().length <= 1) return false; // no real name
+        return hasNewMessage(convState, c.name, c.lastMsg);
     });
 
-    // Filter out conversations whose last message we've already replied to
-    pendingConvs = pendingConvs.filter(function(c) {
-        var key = c.name + ":" + (c.lastMsg || '').substring(0, 80);
-        return !repliedDMs.has(key);
-    });
+    // Cap replies per poll — don't blast everyone at once, pick the most recent
+    if (pendingConvs.length > CONFIG.maxRepliesPerPoll) {
+        console.log("  " + pendingConvs.length + " pending — capping at " + CONFIG.maxRepliesPerPoll + " this poll");
+        pendingConvs = pendingConvs.slice(0, CONFIG.maxRepliesPerPoll);
+    }
 
     if (pendingConvs.length === 0) {
         // Close chat panel silently
@@ -804,32 +931,43 @@ async function pollAndReply(page, botName, repliedDMs) {
 
         if (convInfo.lastSender === 'bot') {
             console.log("    [" + partner + "] Last message is ours — no reply needed");
-            // Mark as handled so we don't re-open this conversation on the next poll
-            var skipKey = targetConv.name + ":" + (targetConv.lastMsg || '').substring(0, 80);
-            repliedDMs.add(skipKey);
-            saveRepliedDMs(repliedDMs);
+            markHandled(convState, targetConv.name, {
+                lastPreview:    targetConv.lastMsg,
+                lastPartnerMsg: targetConv.lastMsg,
+                lastReplyText:  '',
+            });
+            saveState(convState);
+
         } else if (convInfo.lastSender === 'partner' && convInfo.messages.length > 0) {
             var lastPartnerMsg = convInfo.messages[convInfo.messages.length - 1].text;
             console.log("    [" + partner + "] Their last msg: " + lastPartnerMsg.substring(0, 80));
 
-            // Generate reply with full conversation context
+            // ── Reading pause: simulate reading the message before responding ──
+            var readMs = Math.min(4000, 1200 + lastPartnerMsg.length * 15) + randomBetween(0, 1500);
+            console.log("    [" + partner + "] Reading for " + formatMs(readMs) + "...");
+            await sleep(readMs);
+
+            // Generate reply
             var dmReply = await generateDMReply(partner, convInfo.messages);
 
             // Model decided this doesn't warrant a reply
             if (dmReply.trim() === '[NO_REPLY]') {
                 console.log("    [" + partner + "] Leaving on read (model decided no reply needed)");
-                var noReplyKey = targetConv.name + ":" + (targetConv.lastMsg || '').substring(0, 80);
-                repliedDMs.add(noReplyKey);
-                saveRepliedDMs(repliedDMs);
+                markHandled(convState, targetConv.name, {
+                    lastPreview:    targetConv.lastMsg,
+                    lastPartnerMsg: lastPartnerMsg,
+                    lastReplyText:  '[NO_REPLY]',
+                });
+                saveState(convState);
                 continue;
             }
 
-            console.log("    " + "-".repeat(40));
+            console.log("    " + "─".repeat(40));
             console.log("    REPLY TO " + partner + ":");
             console.log("    " + dmReply);
-            console.log("    " + "-".repeat(40));
+            console.log("    " + "─".repeat(40));
 
-            // Type into chat input
+            // Find the chat input
             var dmInput = await page.$(
                 'textarea[placeholder*="Message"], ' +
                 '[class*="ChatTextArea"] textarea, ' +
@@ -839,35 +977,48 @@ async function pollAndReply(page, botName, repliedDMs) {
             );
             if (dmInput) {
                 await dmInput.click({ force: true });
-                await sleep(300);
-                await page.keyboard.type(dmReply, { delay: 20 });
-                await sleep(300);
+                await sleep(randomBetween(200, 500)); // pause before first keystroke
+
+                // Type with human-like variable speed
+                await humanType(page, dmReply);
+                await sleep(randomBetween(200, 600)); // brief pause before hitting send
+
                 if (CONFIG.dryRun) {
                     console.log("    DRY RUN — typed but NOT sent");
+                    await page.keyboard.press('Escape');
                 } else {
                     await page.keyboard.press('Enter');
-                    console.log("    Sent!");
+
+                    // ── Verify the message actually appeared in the conversation ──
+                    await sleep(1500);
+                    var verify = await readFullConversation(page, botName);
+                    var lastMsg = verify.messages.length > 0 ? verify.messages[verify.messages.length - 1] : null;
+                    if (lastMsg && lastMsg.role === 'bot') {
+                        console.log("    ✓ Sent and confirmed!");
+                    } else {
+                        console.log("    ⚠ Could not confirm send — message may not have gone through");
+                    }
                 }
 
-                // Track as replied — save TWO keys so the filter catches it regardless
-                // of whether the list preview shows our reply or their last message.
-                // Key 1: bot's reply text (matches once list preview refreshes)
-                var dmKey = targetConv.name + ":" + dmReply.substring(0, 80);
-                repliedDMs.add(dmKey);
-                // Key 2: partner's last message (matches if list preview hasn't refreshed yet)
-                var partnerMsgKey = targetConv.name + ":" + lastPartnerMsg.substring(0, 80);
-                repliedDMs.add(partnerMsgKey);
-                saveRepliedDMs(repliedDMs);
+                markHandled(convState, targetConv.name, {
+                    lastPreview:    dmReply,         // preview will show our reply once it refreshes
+                    lastPartnerMsg: lastPartnerMsg,  // backup: matches preview before it refreshes
+                    lastReplyText:  dmReply,
+                });
+                saveState(convState);
                 handled++;
             } else {
                 console.log("    Could not find DM input box — skipping");
             }
+
         } else {
-            console.log("    [" + partner + "] Could not read messages — skipping and muting for this session");
-            // Save a skip key so we don't retry every poll (uses current preview as key)
-            var unreadableKey = targetConv.name + ":" + (targetConv.lastMsg || '').substring(0, 80);
-            repliedDMs.add(unreadableKey);
-            saveRepliedDMs(repliedDMs);
+            console.log("    [" + partner + "] Could not read messages — muting for this session");
+            markHandled(convState, targetConv.name, {
+                lastPreview:    targetConv.lastMsg,
+                lastPartnerMsg: targetConv.lastMsg,
+                lastReplyText:  '',
+            });
+            saveState(convState);
         }
 
         // Go back to conversation list
@@ -889,69 +1040,76 @@ async function main() {
         process.exit(1);
     }
 
-    var browser = await chromium.launch({ headless: CONFIG.headless });
-    var context = await browser.newContext();
-    var page = await context.newPage();
-    var repliedDMs = loadRepliedDMs();
+    var convState = loadState();
+    var browser, context, page, botName;
     var cycle = 0;
 
-    try {
-        var botName = await login(page);
+    async function launchBrowser() {
+        if (browser) { try { await browser.close(); } catch (e) {} }
+        browser = await chromium.launch({ headless: CONFIG.headless });
+        context = await browser.newContext();
+        page    = await context.newPage();
+        botName = await login(page);
+    }
 
-        while (true) {
-            cycle++;
+    await launchBrowser();
 
-            // ── ACTIVE PERIOD ──
-            var activeTime = randomBetween(CONFIG.activeMinMs, CONFIG.activeMaxMs);
-            var activeEnd = Date.now() + activeTime;
-            console.log("\n" + "=".repeat(55));
-            console.log("CYCLE " + cycle + " — ACTIVE for " + formatMs(activeTime));
-            console.log("=".repeat(55));
+    while (true) {
+        cycle++;
 
-            var totalHandled = 0;
-            var pollCount = 0;
+        // ── ACTIVE PERIOD ──
+        var activeTime = randomBetween(CONFIG.activeMinMs, CONFIG.activeMaxMs);
+        var activeEnd = Date.now() + activeTime;
+        console.log("\n" + "=".repeat(55));
+        console.log("CYCLE " + cycle + " — ACTIVE for " + formatMs(activeTime));
+        console.log("=".repeat(55));
 
-            while (Date.now() < activeEnd) {
-                pollCount++;
-                var remaining = activeEnd - Date.now();
-                var ts = new Date().toLocaleTimeString();
-                console.log("\n[" + ts + "] Poll #" + pollCount + " (" + formatMs(remaining) + " left in active period)");
+        var totalHandled = 0;
+        var pollCount = 0;
 
-                try {
-                    var handled = await pollAndReply(page, botName, repliedDMs);
-                    totalHandled += handled;
-                    if (handled === 0 && pollCount > 1) {
-                        // No new messages — quiet poll, just show dot
-                        process.stdout.write("  . no new DMs\n");
-                    }
-                } catch (err) {
-                    console.error("  Error during poll: " + err.message);
+        while (Date.now() < activeEnd) {
+            pollCount++;
+            var remaining = activeEnd - Date.now();
+            var ts = new Date().toLocaleTimeString();
+            console.log("\n[" + ts + "] Poll #" + pollCount + " (" + formatMs(remaining) + " left in active period)");
+
+            try {
+                var handled = await pollAndReply(page, botName, convState);
+                totalHandled += handled;
+                if (handled === 0 && pollCount > 1) {
+                    process.stdout.write("  . no new DMs\n");
                 }
-
-                // Wait before next poll (but not if active period is over)
-                if (Date.now() < activeEnd) {
-                    await sleep(CONFIG.pollIntervalMs);
+            } catch (err) {
+                // Detect browser/page crash and auto-recover
+                if (/target closed|page crashed|context destroyed|session closed/i.test(err.message)) {
+                    console.error("  Browser crash detected — relaunching in 30s...");
+                    await sleep(30000);
+                    try { await launchBrowser(); console.log("  Relaunched successfully"); }
+                    catch (e2) { console.error("  Relaunch failed: " + e2.message); await sleep(60000); }
+                } else {
+                    console.error("  Error during poll: " + err.message);
                 }
             }
 
-            console.log("\n" + "-".repeat(55));
-            console.log("ACTIVE PERIOD DONE — replied to " + totalHandled + " DMs across " + pollCount + " polls");
-            console.log("-".repeat(55));
-
-            // Write session log so client can review classifier tag choices
-            sessionLog.writeLogs();
-
-            // ── INACTIVE PERIOD ──
-            var inactiveTime = randomBetween(CONFIG.inactiveMinMs, CONFIG.inactiveMaxMs);
-            console.log("\nINACTIVE for " + formatMs(inactiveTime) + "\n");
-            await countdown(inactiveTime, "Sleeping");
+            if (Date.now() < activeEnd) {
+                await sleep(CONFIG.pollIntervalMs);
+            }
         }
 
-    } catch (err) {
-        console.error("Fatal error:", err.message);
-    } finally {
-        await browser.close();
+        console.log("\n" + "-".repeat(55));
+        console.log("ACTIVE PERIOD DONE — replied to " + totalHandled + " DMs across " + pollCount + " polls");
+        console.log("-".repeat(55));
+
+        sessionLog.writeLogs();
+
+        // ── INACTIVE PERIOD ──
+        var inactiveTime = randomBetween(CONFIG.inactiveMinMs, CONFIG.inactiveMaxMs);
+        console.log("\nINACTIVE for " + formatMs(inactiveTime) + "\n");
+        await countdown(inactiveTime, "Sleeping");
     }
 }
 
-main();
+main().catch(function(err) {
+    console.error("Fatal error:", err.message);
+    process.exit(1);
+});

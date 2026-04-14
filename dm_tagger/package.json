@@ -1,0 +1,11 @@
+{
+  "name": "outreach-dm-tagger",
+  "version": "1.0.0",
+  "description": "DM tagger server for OutreachAI — loads finetune_data_v5.jsonl and tracks Scott's corrections",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.22.1"
+  }
+}

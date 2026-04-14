@@ -216,3 +216,5 @@ async function classifyReply(context) {
 }
 
 module.exports = classifyReply;
+module.exports.SYSTEM_PROMPT  = SYSTEM_PROMPT;
+module.exports.buildUserPrompt = buildUserPrompt;

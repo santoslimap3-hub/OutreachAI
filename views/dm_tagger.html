@@ -96,10 +96,32 @@
             background: transparent; color: #444; font-size: 8px; font-family: inherit;
             cursor: pointer; display: flex; align-items: center; justify-content: center;
         }
-        .nav-dot.active  { border: 2px solid #4ECDC4; background: #1a1a22; color: #f0f0f0; font-weight: 700; }
-        .nav-dot.tagged  { background: rgba(78,205,196,0.18); color: #4ECDC4; }
-        .nav-dot.ai-pre  { background: rgba(244,162,97,0.12); color: #F4A261; }
-        .nav-dot.skipped { background: rgba(100,100,120,0.15); color: #444; }
+        .nav-dot.active    { border: 2px solid #4ECDC4; background: #1a1a22; color: #f0f0f0; font-weight: 700; }
+        .nav-dot.tagged    { background: rgba(78,205,196,0.18); color: #4ECDC4; }
+        .nav-dot.ai-pre    { background: rgba(244,162,97,0.12); color: #F4A261; }
+        .nav-dot.skipped   { background: rgba(100,100,120,0.15); color: #444; }
+        .nav-dot.corrected { background: rgba(138,99,210,0.22); color: #a78bfa; border-color: rgba(138,99,210,0.5); }
+
+        /* Corrected badge shown inside card label */
+        .corrected-badge {
+            display: inline-block; font-size: 9px; font-weight: 700;
+            color: #a78bfa; background: rgba(138,99,210,0.12);
+            border: 1px solid rgba(138,99,210,0.35); border-radius: 4px;
+            padding: 2px 7px; margin-left: 8px; vertical-align: middle;
+            text-transform: none; letter-spacing: 0;
+        }
+
+        /* Legend row under nav dots */
+        .dot-legend {
+            display: flex; gap: 14px; margin-bottom: 14px; flex-wrap: wrap;
+        }
+        .dot-legend-item {
+            display: flex; align-items: center; gap: 5px;
+            font-size: 10px; color: #555;
+        }
+        .dot-legend-swatch {
+            width: 10px; height: 10px; border-radius: 3px; border: 1px solid #333;
+        }
 
         /* Two columns */
         .columns { display: grid; grid-template-columns: 1.15fr 0.85fr; gap: 18px; max-width: 1240px; }
@@ -277,35 +299,13 @@
 </head>
 <body>
 
-<!-- LOAD MODAL -->
+<!-- LOAD MODAL (shown only while fetching from server) -->
 <div class="load-modal" id="loadModal">
-    <div class="load-box">
+    <div class="load-box" style="max-width:480px;text-align:center">
         <div style="font-size:48px;margin-bottom:14px">💬</div>
         <h1>DM Tagger</h1>
-        <p>
-            Tag Scott's DM replies with workflow stage, tone, intent, and sales stage.<br>
-            Optionally load AI pre-labels so you just review and correct — not label from scratch.
-        </p>
-
-        <div class="zones-grid">
-            <!-- Zone 1: JSONL (required) -->
-            <div class="zone-wrap">
-                <div class="zone-label"><span class="req">① Required</span> — DM data</div>
-                <div class="dropzone" id="dzJsonl">
-                    <span>Drop <strong>finetune_data_v5.jsonl</strong> here or click</span>
-                </div>
-            </div>
-            <!-- Zone 2: Pre-labels (optional) -->
-            <div class="zone-wrap">
-                <div class="zone-label"><span class="opt">② Optional</span> — AI pre-labels</div>
-                <div class="dropzone" id="dzPreLabels" style="opacity:0.5;pointer-events:none;">
-                    <span>Drop <strong>dm_prelabeled.json</strong> here<br><small style="color:#444">(from prelabel_dms.js)</small></span>
-                </div>
-            </div>
-        </div>
-
-        <button class="start-btn" id="startBtn" disabled>Load data first ↑</button>
-        <div class="load-hint" id="loadStatus">Awaiting finetune_data_v5.jsonl…</div>
+        <p id="loadStatus" style="color:#888;font-size:13px;margin-top:12px">Loading DMs from server…</p>
+        <div id="loadError" style="display:none;color:#FF6B35;font-size:12px;margin-top:12px"></div>
     </div>
 </div>
 
@@ -324,6 +324,13 @@
 
     <div class="progress-track"><div class="progress-fill" id="progressBar"></div></div>
     <div class="nav-dots" id="navDots"></div>
+    <div class="dot-legend">
+        <div class="dot-legend-item"><div class="dot-legend-swatch" style="background:rgba(78,205,196,0.18);border-color:rgba(78,205,196,0.4)"></div>Fully tagged</div>
+        <div class="dot-legend-item"><div class="dot-legend-swatch" style="background:rgba(138,99,210,0.22);border-color:rgba(138,99,210,0.5)"></div>Corrected</div>
+        <div class="dot-legend-item"><div class="dot-legend-swatch" style="background:rgba(244,162,97,0.12);border-color:rgba(244,162,97,0.4)"></div>AI pre-labeled</div>
+        <div class="dot-legend-item"><div class="dot-legend-swatch" style="background:rgba(100,100,120,0.15);border-color:#333"></div>Skipped</div>
+        <div class="dot-legend-item"><div class="dot-legend-swatch" style="background:transparent;border-color:#2a2a32"></div>Untagged</div>
+    </div>
 
     <div class="columns">
 
@@ -347,6 +354,7 @@
                 <div class="card-label">
                     DM Workflow Stage <span style="color:#333">(pick one)</span>
                     <span class="ai-badge" id="aiBadge">✦ AI suggested</span>
+                    <span class="corrected-badge" id="correctedBadge" style="display:none">✎ Manually corrected</span>
                 </div>
 
                 <!-- Non-sales toggle -->
@@ -456,6 +464,12 @@ let currentIndex  = 0;
 let pendingData   = null;   // parsed entries waiting for startTagging()
 let preLabels     = {};     // key → label object from dm_prelabeled.json
 
+// Correction tracking: snapshot of tags at the moment the entry was first rendered
+// entrySnapshots[index] = cloned tags object before any manual edit
+const entrySnapshots = {};
+// Set of correction_ids already posted so we can upsert, not duplicate
+const postedCorrectionIds = new Set();
+
 const $ = id => document.getElementById(id);
 
 // ─── LEAD NAME EXTRACTION ─────────────────────────────────────────────────────
@@ -533,58 +547,104 @@ function parseJSONL(text) {
                 sales_stage: '',
             },
             aiSuggested: false,
+            corrected: false,
             skipped: false,
         });
     }
     return rawUnits;
 }
 
-// ─── LOAD JSONL FILE ─────────────────────────────────────────────────────────
-function loadJSONL(text) {
-    const rawUnits = parseJSONL(text);
+// ─── LOAD FROM SERVER ─────────────────────────────────────────────────────────
+async function loadFromServer() {
+    try {
+        $('loadStatus').textContent = 'Loading DMs from server…';
 
-    if (rawUnits.length === 0) {
-        alert('No DM entries found. Make sure this is finetune_data_v5.jsonl.');
-        $('loadStatus').textContent = 'No DM entries found — wrong file?';
-        return;
-    }
+        // Fetch DMs and pre-labels in parallel
+        const [dmsResp, plResp] = await Promise.all([
+            fetch('/api/dms'),
+            fetch('/api/prelabels'),
+        ]);
 
-    // Interleave by conversation for variety
-    const groups = {};
-    for (const u of rawUnits) {
-        if (!groups[u.convKey]) groups[u.convKey] = [];
-        groups[u.convKey].push(u);
-    }
-    const keys = shuffled(Object.keys(groups));
-    for (const k of keys) fisherYates(groups[k]);
+        if (!dmsResp.ok) throw new Error(`Server error ${dmsResp.status}: ${await dmsResp.text()}`);
+        const { entries: rawEntries } = await dmsResp.json();
 
-    const result = [];
-    const ptrs   = {};
-    for (const k of keys) ptrs[k] = 0;
-    let added = true;
-    while (added) {
-        added = false;
-        for (const k of keys) {
-            if (ptrs[k] < groups[k].length) { result.push(groups[k][ptrs[k]++]); added = true; }
+        if (!rawEntries || rawEntries.length === 0) {
+            throw new Error('No DM entries found in finetune_data_v5.jsonl');
         }
+
+        // Load pre-labels if available
+        if (plResp.ok) {
+            const plData = await plResp.json();
+            if (plData.exists && plData.labels) {
+                preLabels = plData.labels;
+                const count = plData.labeled || Object.keys(preLabels).length;
+                console.log(`[pre-labels] loaded ${count} labels from server (model: ${plData.model || '?'})`);
+            }
+        }
+
+        // Parse the raw messages objects into the tagger's internal format
+        const rawUnits = [];
+        for (const d of rawEntries) {
+            const msgs = d.messages || [];
+            const lastMsg = msgs[msgs.length - 1];
+            const leadName = extractLeadName(msgs) || 'Lead';
+            const history = [];
+            for (let i = 1; i < msgs.length - 1; i++) {
+                history.push({ role: msgs[i].role, text: msgs[i].content });
+            }
+            const scottReply = lastMsg.content || '';
+            const key = scottReply.substring(0, 80).trim().replace(/\s+/g, ' ');
+            rawUnits.push({
+                convKey:    msgs[1].content.substring(0, 60),
+                key,
+                leadName,
+                history,
+                scottReply,
+                tags: { dm_stage: '', nonsales: false, tone_tags: [], intent: '', sales_stage: '' },
+                aiSuggested: false,
+                corrected: false,
+                skipped: false,
+            });
+        }
+
+        // Interleave by conversation for variety
+        const groups = {};
+        for (const u of rawUnits) {
+            if (!groups[u.convKey]) groups[u.convKey] = [];
+            groups[u.convKey].push(u);
+        }
+        const keys = shuffled(Object.keys(groups));
+        for (const k of keys) fisherYates(groups[k]);
+        const result = [];
+        const ptrs = {};
+        for (const k of keys) ptrs[k] = 0;
+        let added = true;
+        while (added) {
+            added = false;
+            for (const k of keys) {
+                if (ptrs[k] < groups[k].length) { result.push(groups[k][ptrs[k]++]); added = true; }
+            }
+        }
+
+        pendingData = result;
+
+        const plCount = Object.keys(preLabels).length;
+        $('loadStatus').textContent = plCount > 0
+            ? `${result.length} DMs loaded · ${plCount} AI pre-labels ready. Starting…`
+            : `${result.length} DMs loaded. Starting…`;
+
+        startTagging();
+
+    } catch (err) {
+        console.error('Load error:', err);
+        $('loadStatus').textContent = 'Failed to load from server.';
+        const errEl = $('loadError');
+        errEl.style.display = 'block';
+        errEl.textContent = err.message;
     }
-
-    pendingData = result;
-
-    // Update modal UI
-    const dz = $('dzJsonl');
-    dz.classList.add('loaded');
-    dz.innerHTML = `<span class="check">✓</span><span style="color:#4ECDC4;font-weight:700">${result.length} DMs loaded</span><br><span style="color:#555;font-size:10px">from ${keys.length} conversations</span>`;
-
-    // Enable pre-labels zone and start button
-    $('dzPreLabels').style.opacity   = '1';
-    $('dzPreLabels').style.pointerEvents = 'auto';
-    $('startBtn').disabled  = false;
-    $('startBtn').textContent = `Start Tagging ${result.length} DMs →`;
-    $('loadStatus').textContent = 'Optionally drop dm_prelabeled.json above, then click Start.';
 }
 
-// ─── LOAD PRE-LABELS ─────────────────────────────────────────────────────────
+// ─── LOAD PRE-LABELS (kept for compatibility / optional future use) ───────────
 function loadPreLabels(text) {
     let data;
     try { data = JSON.parse(text); } catch (e) {
@@ -595,14 +655,8 @@ function loadPreLabels(text) {
     preLabels = data.labels || {};
     const count = Object.keys(preLabels).length;
 
-    const dz = $('dzPreLabels');
-    dz.classList.remove('over');
-    dz.classList.add('loaded-opt');
-    dz.innerHTML = `<span class="check-opt">✓</span><span style="color:#F4A261;font-weight:700">${count} AI labels loaded</span><br><span style="color:#555;font-size:10px">generated ${data.generated_at ? data.generated_at.substring(0,10) : 'unknown'}</span>`;
-
-    const btnLabel = pendingData ? `Start Tagging ${pendingData.length} DMs →` : 'Start Tagging →';
-    $('startBtn').textContent = btnLabel;
-    $('loadStatus').textContent = `AI labels ready — ${count} entries will be pre-populated.`;
+    // (no modal UI to update in server mode — labels will be applied at startTagging)
+    console.log(`AI pre-labels loaded: ${count} entries`);
 }
 
 // ─── START TAGGING ────────────────────────────────────────────────────────────
@@ -628,6 +682,12 @@ function startTagging() {
         console.log(`Applied pre-labels to ${matched}/${entries.length} entries`);
     }
 
+    // Snapshot every entry's tags NOW (after pre-labels applied) so corrections
+    // only fire when Scott actually changes something vs the AI suggestion.
+    for (let i = 0; i < entries.length; i++) {
+        entrySnapshots[i] = cloneTags(entries[i].tags);
+    }
+
     currentIndex = 0;
     $('loadModal').style.display = 'none';
     $('app').classList.add('active');
@@ -641,6 +701,132 @@ function fisherYates(arr) {
     }
 }
 function shuffled(arr) { const a = [...arr]; fisherYates(a); return a; }
+
+// ─── CORRECTION TRACKING ──────────────────────────────────────────────────────
+
+function cloneTags(tags) {
+    return {
+        dm_stage:    tags.dm_stage,
+        nonsales:    tags.nonsales,
+        tone_tags:   [...(tags.tone_tags || [])],
+        intent:      tags.intent,
+        sales_stage: tags.sales_stage,
+    };
+}
+
+function tagsEqual(a, b) {
+    if (!a || !b) return false;
+    if (a.dm_stage !== b.dm_stage) return false;
+    if (a.nonsales !== b.nonsales) return false;
+    if (a.intent !== b.intent) return false;
+    if (a.sales_stage !== b.sales_stage) return false;
+    const ta = [...(a.tone_tags || [])].sort();
+    const tb = [...(b.tone_tags || [])].sort();
+    if (ta.length !== tb.length) return false;
+    for (let i = 0; i < ta.length; i++) if (ta[i] !== tb[i]) return false;
+    return true;
+}
+
+// Build a stable unique ID for each entry (based on scottReply key + history length)
+function entryId(index) {
+    const e = entries[index];
+    return `${index}__${e.key.substring(0, 40).replace(/\W+/g, '_')}`;
+}
+
+// Called once when an entry is first rendered — records baseline tags
+function snapshotIfNew(index) {
+    if (entrySnapshots[index] === undefined) {
+        entrySnapshots[index] = cloneTags(entries[index].tags);
+    }
+}
+
+// Called after every tag mutation — sends correction to server if tags changed vs snapshot
+async function trackCorrection(index) {
+    const entry    = entries[index];
+    const snapshot = entrySnapshots[index];
+    const current  = entry.tags;
+
+    // Only track if there was a meaningful previous state (AI pre-labeled or user had interacted before)
+    if (!snapshot) return;
+    if (tagsEqual(snapshot, current)) return;  // nothing changed yet
+
+    // Optimistically mark as corrected so the nav dot updates immediately
+    entries[index].corrected = true;
+    refreshNavDots();
+
+    const correctionId = entryId(index);
+
+    // Build last-10-messages context (history messages before the reply being tagged)
+    const allMsgs = entry.history || [];
+    const last10  = allMsgs.slice(-10).map(m => ({ role: m.role, text: m.text }));
+
+    const correction = {
+        correction_id:    correctionId,
+        timestamp:        new Date().toISOString(),
+        lead_name:        entry.leadName,
+        scott_reply:      entry.scottReply,
+        last_10_messages: last10,
+        previous_tags:    snapshot,
+        new_tags: {
+            dm_stage:    current.nonsales ? null : current.dm_stage,
+            nonsales:    current.nonsales,
+            tone_tags:   [...(current.tone_tags || [])],
+            intent:      current.intent,
+            sales_stage: current.sales_stage,
+        },
+    };
+
+    try {
+        const resp = await fetch('/api/corrections', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(correction),
+        });
+        if (resp.ok) {
+            const data = await resp.json();
+            console.log(`[corrections] updated ${data.updated_lines} JSONL line(s) · ${data.total_corrections} total corrections logged`);
+            // Mark entry as manually corrected and update nav dots immediately
+            entries[index].corrected = true;
+            // Update snapshot to the current state so next change is diffed from here
+            entrySnapshots[index] = cloneTags(current);
+            // Refresh nav dots to reflect corrected state without full re-render
+            refreshNavDots();
+        } else {
+            const err = await resp.json().catch(() => ({}));
+            console.warn(`[corrections] server error ${resp.status}:`, err.error || resp.statusText);
+        }
+    } catch (err) {
+        console.warn('[corrections] failed to reach server:', err.message);
+    }
+}
+
+// ─── NAV DOT REFRESH (lightweight — just rebuilds dots, no full re-render) ────
+function refreshNavDots() {
+    const dots   = $('navDots');
+    dots.innerHTML = '';
+    const maxDots = Math.min(entries.length, 200);
+    for (let i = 0; i < maxDots; i++) {
+        const e  = entries[i];
+        const t  = e.tags;
+        const ok = t.nonsales || (t.dm_stage && t.dm_stage !== '');
+        const isTagged = ok && t.tone_tags.length > 0 && t.intent && t.sales_stage;
+        const btn = document.createElement('button');
+        btn.className = 'nav-dot'
+            + (i === currentIndex ? ' active'    : '')
+            + (e.corrected        ? ' corrected' : (isTagged ? ' tagged' : (e.aiSuggested ? ' ai-pre' : '')))
+            + (e.skipped          ? ' skipped'   : '');
+        btn.title = e.corrected ? 'Manually corrected' : (isTagged ? 'Fully tagged' : (e.aiSuggested ? 'AI pre-labeled' : ''));
+        btn.textContent = i + 1;
+        btn.onclick = () => { currentIndex = i; render(); };
+        dots.appendChild(btn);
+    }
+    if (entries.length > maxDots) {
+        const span = document.createElement('span');
+        span.style.cssText = 'font-size:10px;color:#333;padding:0 4px;line-height:22px;';
+        span.textContent   = `+${entries.length - maxDots} more`;
+        dots.appendChild(span);
+    }
+}
 
 // ─── RENDER ───────────────────────────────────────────────────────────────────
 function render() {
@@ -677,9 +863,11 @@ function render() {
     scroll.appendChild(makeBubble('Scott', entry.scottReply, true, true));
     setTimeout(() => { scroll.scrollTop = scroll.scrollHeight; }, 0);
 
-    // ── AI badge ──
+    // ── AI badge + corrected badge ──
     const badge = $('aiBadge');
-    badge.style.display = entry.aiSuggested ? 'inline' : 'none';
+    badge.style.display = (entry.aiSuggested && !entry.corrected) ? 'inline' : 'none';
+    const corrBadge = $('correctedBadge');
+    corrBadge.style.display = entry.corrected ? 'inline' : 'none';
 
     // ── Non-sales toggle ──
     const nsRow = $('nonsalesToggle');
@@ -691,6 +879,7 @@ function render() {
         if (tags.nonsales) tags.dm_stage = null;
         else tags.dm_stage = (tags.dm_stage === null) ? '' : tags.dm_stage;
         entry.aiSuggested = false;
+        trackCorrection(currentIndex);
         render();
     };
 
@@ -708,7 +897,7 @@ function render() {
                 <div class="dm-stage-title">${s.title}</div>
                 <div class="dm-stage-desc">${s.desc}</div>
             </div>`;
-        btn.onclick = () => { tags.dm_stage = s.value; entry.aiSuggested = false; render(); };
+        btn.onclick = () => { tags.dm_stage = s.value; entry.aiSuggested = false; trackCorrection(currentIndex); render(); };
         stageC.appendChild(btn);
     });
 
@@ -728,6 +917,7 @@ function render() {
             if (idx === -1) tags.tone_tags.push(opt.value);
             else tags.tone_tags.splice(idx, 1);
             entry.aiSuggested = false;
+            trackCorrection(currentIndex);
             render();
         };
         toneC.appendChild(btn);
@@ -741,7 +931,7 @@ function render() {
         const btn    = document.createElement('button');
         btn.className = 'intent-card' + (active ? ' active' : '');
         btn.innerHTML = `<span class="label">${opt.label}</span><span class="desc">${opt.desc}</span>`;
-        btn.onclick = () => { tags.intent = opt.value; entry.aiSuggested = false; render(); };
+        btn.onclick = () => { tags.intent = opt.value; entry.aiSuggested = false; trackCorrection(currentIndex); render(); };
         intC.appendChild(btn);
     });
 
@@ -753,7 +943,7 @@ function render() {
         const btn    = document.createElement('button');
         btn.className = 'stage-btn' + (active ? ' active' : '');
         btn.innerHTML = `<span class="icon">${s.icon}</span><span>${s.label}</span>`;
-        btn.onclick = () => { tags.sales_stage = s.value; entry.aiSuggested = false; render(); };
+        btn.onclick = () => { tags.sales_stage = s.value; entry.aiSuggested = false; trackCorrection(currentIndex); render(); };
         ssC.appendChild(btn);
     });
 
@@ -772,29 +962,7 @@ function render() {
           ].filter(Boolean).join(', ') + ' missing';
 
     // ── Nav dots ──
-    const dots   = $('navDots');
-    dots.innerHTML = '';
-    const maxDots = Math.min(entries.length, 200);
-    for (let i = 0; i < maxDots; i++) {
-        const e  = entries[i];
-        const t  = e.tags;
-        const ok = t.nonsales || (t.dm_stage && t.dm_stage !== '');
-        const isTagged = ok && t.tone_tags.length > 0 && t.intent && t.sales_stage;
-        const btn = document.createElement('button');
-        btn.className = 'nav-dot'
-            + (i === currentIndex ? ' active'  : '')
-            + (isTagged           ? ' tagged'  : (e.aiSuggested ? ' ai-pre' : ''))
-            + (e.skipped          ? ' skipped' : '');
-        btn.textContent = i + 1;
-        btn.onclick = () => { currentIndex = i; render(); };
-        dots.appendChild(btn);
-    }
-    if (entries.length > maxDots) {
-        const span = document.createElement('span');
-        span.style.cssText = 'font-size:10px;color:#333;padding:0 4px;line-height:22px;';
-        span.textContent   = `+${entries.length - maxDots} more`;
-        dots.appendChild(span);
-    }
+    refreshNavDots();
 
     // ── Progress ──
     const total  = entries.length;
@@ -837,8 +1005,6 @@ $('skipBtn').addEventListener('click', () => {
     entries[currentIndex].skipped = true;
     if (currentIndex < entries.length - 1) { currentIndex++; render(); }
 });
-$('startBtn').addEventListener('click', startTagging);
-
 document.addEventListener('keydown', e => {
     if (!entries.length) return;
     if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
@@ -883,35 +1049,18 @@ $('exportBtn').addEventListener('click', () => {
     setTimeout(() => toast.classList.remove('show'), 3000);
 });
 
-// ─── FILE HANDLING ─────────────────────────────────────────────────────────────
-function setupDropzone(dzId, onTextFn) {
-    const dz = $(dzId);
-    dz.addEventListener('click', () => {
-        const inp = document.createElement('input');
-        inp.type = 'file'; inp.accept = '.jsonl,.json';
-        inp.onchange = e => {
-            const f = e.target.files[0];
-            if (!f) return;
-            const r = new FileReader();
-            r.onload = ev => onTextFn(ev.target.result);
-            r.readAsText(f);
-        };
-        inp.click();
-    });
-    dz.addEventListener('dragover',  e => { e.preventDefault(); dz.classList.add('over'); });
-    dz.addEventListener('dragleave', ()  => dz.classList.remove('over'));
-    dz.addEventListener('drop', e => {
-        e.preventDefault(); dz.classList.remove('over');
-        const f = e.dataTransfer.files[0];
-        if (!f) return;
-        const r = new FileReader();
-        r.onload = ev => onTextFn(ev.target.result);
-        r.readAsText(f);
-    });
-}
-
-setupDropzone('dzJsonl',     text => loadJSONL(text));
-setupDropzone('dzPreLabels', text => loadPreLabels(text));
+// ─── BOOT ─────────────────────────────────────────────────────────────────────
+// When served via the DM tagger server, load data automatically.
+// If opened as a plain file (no server), show a friendly message.
+(function boot() {
+    if (window.location.protocol === 'file:') {
+        $('loadStatus').textContent = 'Open via the server: run npm start in dm_tagger/ then visit http://localhost:3001';
+        $('loadError').style.display = 'block';
+        $('loadError').textContent   = 'Direct file:// access detected — server required to load JSONL data.';
+        return;
+    }
+    loadFromServer();
+})();
 </script>
 </body>
 </html>
