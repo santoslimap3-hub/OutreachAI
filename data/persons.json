@@ -1,10 +1,10 @@
 {
-  "generatedAt": "2026-04-16T02:42:09.469Z",
+  "generatedAt": "2026-04-16T03:24:20.171Z",
   "counts": {
-    "total": 953,
-    "withSlug": 508,
+    "total": 952,
+    "withSlug": 507,
     "withoutSlug": 445,
-    "leads": 951,
+    "leads": 950,
     "team": 2,
     "female": 1
   },
@@ -101,12 +101,15 @@
       "id": "scott-northwolf-3818",
       "slug": "scott-northwolf-3818",
       "displayName": "Scott Northwolf",
-      "displayAliases": [],
+      "displayAliases": [
+        "Scott Northwolf"
+      ],
       "gender": "male",
-      "role": "lead",
+      "role": "company-member:ceo",
       "sources": [
         "v2_posts",
-        "legacy_posts"
+        "legacy_posts",
+        "company_members"
       ]
     },
     "michael-pluszek-9039": {
@@ -11052,17 +11055,6 @@
       "role": "lead",
       "sources": [
         "legacy_posts"
-      ]
-    },
-    "scott-northwolf": {
-      "id": "scott-northwolf",
-      "slug": "scott-northwolf",
-      "displayName": "Scott Northwolf",
-      "displayAliases": [],
-      "gender": "male",
-      "role": "company-member:ceo",
-      "sources": [
-        "company_members"
       ]
     },
     "lea-newkirk": {

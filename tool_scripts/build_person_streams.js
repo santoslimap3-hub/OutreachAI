@@ -46,14 +46,30 @@ const path = require("path");
 
 const ROOT = path.resolve(__dirname, "..");
 const DATA_DIR = path.join(ROOT, "data");
-const PERSONS_FILE = path.join(DATA_DIR, "persons.json");
-const DM_CSV = path.join(DATA_DIR, "dm-classified.csv");
-const V2_POSTS = path.join(ROOT, "scraper", "output", "fresh_skool_data.json");
-const OUTPUT_FILE = path.join(DATA_DIR, "person_streams.json");
+const PERSONS_FILE    = path.join(DATA_DIR, "persons.json");
+const COMPANY_FILE    = path.join(DATA_DIR, "company_members.json");
+const DM_CSV          = path.join(DATA_DIR, "dm-classified.csv");
+const V2_POSTS        = path.join(ROOT, "scraper", "output", "fresh_skool_data.json");
+const LEGACY_POSTS    = path.join(DATA_DIR, "posts_with_scott_reply_threads.json");
+const OUTPUT_FILE     = path.join(DATA_DIR, "person_streams.json");
 
 // ─── helpers ───────────────────────────────────────────────────────────────
 
-function readJSON(p, fb) { if (!fs.existsSync(p)) return fb; try { return JSON.parse(fs.readFileSync(p, "utf8")); } catch (_) { return fb; } }
+// LOUD readJSON: logs the actual error if a file exists but fails to parse.
+// Silent swallowing was the root cause of the v7/v8 "DM-only" bug.
+function readJSON(p, fb) {
+    if (!fs.existsSync(p)) return fb;
+    var content = fs.readFileSync(p, "utf8");
+    // Strip trailing null bytes (Windows/NTFS sparse-file artifact seen in scraper output)
+    var trimmed = content.replace(/\0+$/, "");
+    try {
+        return JSON.parse(trimmed);
+    } catch (e) {
+        console.error("❌ PARSE ERROR in " + path.basename(p) + ": " + e.message.substring(0, 120));
+        console.error("   (returning fallback — this is likely why post/comment data is missing)");
+        return fb;
+    }
+}
 
 function normalizeDisplay(name) {
     if (!name) return "";
@@ -162,13 +178,27 @@ function build() {
     }
     var persons = personsDoc;
 
-    // Scott's id
-    var scottId = "scott-northwolf";
-    if (!persons.persons[scottId]) {
-        console.error("⚠  persons.json has no 'scott-northwolf' entry. Check company_members.json.");
-        // still proceed with a synthetic entry so Scott messages resolve
-        persons.persons[scottId] = { id: scottId, slug: scottId, displayName: "Scott Northwolf", role: "company-member:ceo", gender: "male" };
+    // Resolve Scott's canonical ID from company_members.json — never hardcode.
+    // His Skool slug is scott-northwolf-3818 (has numeric suffix), NOT scott-northwolf.
+    // Hardcoding caused Bug 2: every Scott comment was mis-tagged as speaker="lead".
+    var companyDoc = readJSON(COMPANY_FILE, { members: [] });
+    var scottMember = (companyDoc.members || []).find(function(m) {
+        return (m.displayName || "").toLowerCase().indexOf("scott") !== -1 &&
+               (m.role || "").indexOf("ceo") !== -1;
+    });
+    var scottId = scottMember ? scottMember.slug : null;
+    if (!scottId) {
+        console.error("❌ Could not find Scott's slug in company_members.json. Post events won't be tagged correctly.");
+        process.exit(1);
     }
+    // Also add Scott to persons map if not already present (needed for stream creation)
+    if (!persons.persons[scottId]) {
+        persons.persons[scottId] = {
+            id: scottId, slug: scottId, displayName: "Scott Northwolf",
+            role: "company-member:ceo", gender: "male", sources: ["company_members"],
+        };
+    }
+    console.log("  Scott canonical ID:    " + scottId);
 
     function isCompany(id) {
         var p = persons.persons[id];
@@ -370,11 +400,107 @@ function build() {
             });
         });
     } else {
-        console.log("⚠  no v2 posts file — stream will be DM-only");
+        console.log("⚠  no v2 posts file (fresh_skool_data.json) found");
     }
-    console.log("  post events:           " + postEvents);
-    console.log("  comment events:        " + commentEvents);
-    console.log("  reply events:          " + replyEvents);
+
+    // ─── Fallback: legacy posts_with_scott_reply_threads.json (SIN data) ──
+    // This file has no slugs and no absolute timestamps but has real content.
+    // Use it to fill gaps until a fresh SIN scrape with scraper_v2 is done.
+    // Timestamps are derived (post's relative string → scrapedAt anchor → offsets).
+    // The legacy file IS recognized and parsed separately so the v2 scrape of
+    // Synthesizer and the legacy SIN data can coexist without duplication.
+    var legacyPostEvents = 0, legacyCommentEvents = 0, legacyReplyEvents = 0;
+    var LEGACY_ANCHOR = "2026-01-01T00:00:00.000Z"; // safe fallback anchor if no better date
+    var legacy = readJSON(LEGACY_POSTS, null);
+    if (legacy && Array.isArray(legacy)) {
+        console.log("  legacy posts found:    " + legacy.length + " (SIN, display-name only, derived timestamps)");
+        legacy.forEach(function(postData, postIdx) {
+            if (!postData.scott_involved) return; // skip posts without Scott
+            var origPost = postData.original_post || {};
+            var postAnchor = LEGACY_ANCHOR; // no absolute timestamp available in legacy format
+            // Derive a plausible post date from the raw "2d •" / "Feb 12 •" string
+            // We can't know the scrape date from the file itself so we fall back to anchor.
+            // This is acceptable — within-thread order is preserved, cross-channel ordering
+            // will be approximate until a fresh scrape with scraper_v2 replaces this data.
+
+            var postAuthorDisplay = origPost.author || "";
+            var postAuthorId = resolvePersonId(persons, postAuthorDisplay, null);
+
+            (postData.threads || []).forEach(function(th, tIdx) {
+                var comment = th.comment || {};
+                var commentAuthorDisplay = comment.author || "";
+                if (!commentAuthorDisplay) return;
+
+                var tIso = offsetIso(postAnchor, postIdx * 3600 + tIdx * 60);
+                var cAuthorId = resolvePersonId(persons, commentAuthorDisplay, null);
+                if (!cAuthorId) return;
+
+                var cSpeaker = (normalizeDisplay(commentAuthorDisplay) === normalizeDisplay("Scott Northwolf"))
+                    ? "scott" : (isCompany(cAuthorId) ? "other_member" : "lead");
+                // If this is Scott's comment we need to map it to scottId
+                if (cSpeaker === "scott") cAuthorId = scottId;
+
+                var cs = streamFor(cAuthorId);
+                cs.events.push({
+                    ts: tIso, ts_source: "derived", channel: "comment",
+                    direction: cSpeaker === "scott" ? "from_scott" : "from_person",
+                    speaker: cSpeaker, text: comment.content || "",
+                    postUrl: origPost.url || null, postTitle: origPost.title || "",
+                    commentId: null, parentCommentId: null, legacy: true,
+                });
+                legacyCommentEvents++;
+
+                // Mirror Scott top-level comment to the post author's stream
+                if (cSpeaker === "scott" && postAuthorId && postAuthorId !== scottId) {
+                    streamFor(postAuthorId).events.push({
+                        ts: tIso, ts_source: "derived", channel: "comment",
+                        direction: "from_scott", speaker: "scott", text: comment.content || "",
+                        postUrl: origPost.url || null, postTitle: origPost.title || "",
+                        mirroredFromThread: true, legacy: true,
+                    });
+                }
+
+                // replies
+                (th.replies || []).forEach(function(reply, rIdx) {
+                    var replyAuthorDisplay = reply.author || "";
+                    if (!replyAuthorDisplay) return;
+                    var rIso = offsetIso(tIso, 10 * (rIdx + 1));
+                    var rSpeaker = (normalizeDisplay(replyAuthorDisplay) === normalizeDisplay("Scott Northwolf"))
+                        ? "scott" : "lead";
+                    var rAuthorId = rSpeaker === "scott" ? scottId : resolvePersonId(persons, replyAuthorDisplay, null);
+                    if (!rAuthorId) return;
+
+                    var rs = streamFor(rAuthorId);
+                    rs.events.push({
+                        ts: rIso, ts_source: "derived", channel: "comment",
+                        direction: rSpeaker === "scott" ? "from_scott" : "from_person",
+                        speaker: rSpeaker, text: reply.content || "",
+                        postUrl: origPost.url || null, postTitle: origPost.title || "",
+                        legacy: true,
+                    });
+                    legacyReplyEvents++;
+
+                    // Mirror Scott reply into the top-level commenter's stream
+                    if (rSpeaker === "scott" && cAuthorId !== scottId) {
+                        streamFor(cAuthorId).events.push({
+                            ts: rIso, ts_source: "derived", channel: "comment",
+                            direction: "from_scott", speaker: "scott", text: reply.content || "",
+                            postUrl: origPost.url || null, postTitle: origPost.title || "",
+                            mirroredFromThread: true, legacy: true,
+                        });
+                    }
+                });
+            });
+        });
+        console.log("  legacy comment events: " + legacyCommentEvents);
+        console.log("  legacy reply events:   " + legacyReplyEvents);
+    } else {
+        console.log("⚠  no legacy posts file found");
+    }
+
+    console.log("  post events (v2):      " + postEvents);
+    console.log("  comment events (v2):   " + commentEvents);
+    console.log("  reply events (v2):     " + replyEvents);
     console.log("  derived timestamps:    " + tsDerived + " (no absolute time found)");
 
     // ─── Sort and assign bubble indices within same-speaker contiguous runs ─
@@ -401,8 +527,8 @@ function build() {
         generatedAt: new Date().toISOString(),
         counts: {
             persons: Object.keys(streams).length,
-            totalEvents: Object.values(streams).reduce(function(s, st) { return s + st.events.length; }, 0),
-            excludedStreams: Object.values(streams).filter(function(s) { return s.excludeFromTraining; }).length,
+            totalEvents: Object.values(streams).reduce(function(s, st){ return s + st.events.length; }, 0),
+            excludedStreams: Object.values(streams).filter(function(s){ return s.excludeFromTraining; }).length,
         },
         streams: streams,
     };
