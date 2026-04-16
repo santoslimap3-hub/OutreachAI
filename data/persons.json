@@ -1,10 +1,10 @@
 {
-  "generatedAt": "2026-04-16T03:24:20.171Z",
+  "generatedAt": "2026-04-16T08:42:12.219Z",
   "counts": {
-    "total": 952,
-    "withSlug": 507,
+    "total": 951,
+    "withSlug": 506,
     "withoutSlug": 445,
-    "leads": 950,
+    "leads": 949,
     "team": 2,
     "female": 1
   },
@@ -48,12 +48,16 @@
       "id": "lea-newkirk-8525",
       "slug": "lea-newkirk-8525",
       "displayName": "Lea Newkirk",
-      "displayAliases": [],
-      "gender": "male",
-      "role": "lead",
+      "displayAliases": [
+        "Lea Newkirk"
+      ],
+      "gender": "female",
+      "role": "company-member:appointment-setter",
       "sources": [
         "v2_posts",
-        "legacy_posts"
+        "legacy_posts",
+        "company_members",
+        "override"
       ]
     },
     "vinayak-yele-6040": {
@@ -11055,18 +11059,6 @@
       "role": "lead",
       "sources": [
         "legacy_posts"
-      ]
-    },
-    "lea-newkirk": {
-      "id": "lea-newkirk",
-      "slug": "lea-newkirk",
-      "displayName": "Lea Newkirk",
-      "displayAliases": [],
-      "gender": "female",
-      "role": "company-member:appointment-setter",
-      "sources": [
-        "company_members",
-        "override"
       ]
     }
   }

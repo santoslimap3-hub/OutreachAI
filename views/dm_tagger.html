@@ -1,1066 +1,1805 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>DM Tagger — OutreachAI</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap');
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
         body {
             background: #0c0c10;
             font-family: 'JetBrains Mono', 'SF Mono', monospace;
             color: #f0f0f0;
             min-height: 100vh;
         }
-
         /* ─── LOAD MODAL ─── */
+        
         .load-modal {
-            position: fixed; inset: 0;
-            display: flex; align-items: center; justify-content: center;
-            background: rgba(10,10,15,0.97); z-index: 1000;
+            position: fixed;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(10, 10, 15, 0.97);
+            z-index: 1000;
         }
+        
         .load-box {
-            background: #141418; border: 1px solid #2a2a32;
-            border-radius: 16px; padding: 40px; max-width: 680px;
-            width: 93%; text-align: center;
+            background: #141418;
+            border: 1px solid #2a2a32;
+            border-radius: 16px;
+            padding: 40px;
+            max-width: 680px;
+            width: 93%;
+            text-align: center;
         }
-        .load-box h1 { font-size: 22px; font-weight: 700; margin-bottom: 8px; }
-        .load-box p  { color: #888; font-size: 12px; margin-bottom: 24px; line-height: 1.7; }
-        .load-box code { color: #4ECDC4; background: #1a2a28; padding: 2px 6px; border-radius: 4px; }
-
-        .zones-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px; }
-        @media (max-width: 600px) { .zones-grid { grid-template-columns: 1fr; } }
-
+        
+        .load-box h1 {
+            font-size: 22px;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+        
+        .load-box p {
+            color: #888;
+            font-size: 12px;
+            margin-bottom: 24px;
+            line-height: 1.7;
+        }
+        
+        .load-box code {
+            color: #4ECDC4;
+            background: #1a2a28;
+            padding: 2px 6px;
+            border-radius: 4px;
+        }
+        
+        .zones-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-bottom: 14px;
+        }
+        
+        @media (max-width: 600px) {
+            .zones-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+        
         .zone-wrap {}
+        
         .zone-label {
-            font-size: 10px; color: #666; text-align: left; margin-bottom: 6px;
-            letter-spacing: 0.5px; text-transform: uppercase; font-weight: 700;
+            font-size: 10px;
+            color: #666;
+            text-align: left;
+            margin-bottom: 6px;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+            font-weight: 700;
         }
-        .zone-label .req { color: #FF6B35; }
-        .zone-label .opt { color: #4ECDC4; }
-
+        
+        .zone-label .req {
+            color: #FF6B35;
+        }
+        
+        .zone-label .opt {
+            color: #4ECDC4;
+        }
+        
         .dropzone {
-            border: 2px dashed #333; border-radius: 12px;
-            padding: 28px 20px; cursor: pointer; transition: all 0.2s;
+            border: 2px dashed #333;
+            border-radius: 12px;
+            padding: 28px 20px;
+            cursor: pointer;
+            transition: all 0.2s;
         }
-        .dropzone.over  { border-color: #4ECDC4; background: rgba(78,205,196,0.05); }
-        .dropzone.loaded { border-color: #4ECDC4; border-style: solid; background: rgba(78,205,196,0.06); }
-        .dropzone.loaded-opt { border-color: #F4A261; border-style: solid; background: rgba(244,162,97,0.06); }
-        .dropzone span  { color: #666; font-size: 11px; }
-        .dropzone strong { color: #aaa; }
-        .dropzone .check { color: #4ECDC4; font-size: 14px; display: block; margin-bottom: 4px; }
-        .dropzone .check-opt { color: #F4A261; font-size: 14px; display: block; margin-bottom: 4px; }
-
+        
+        .dropzone.over {
+            border-color: #4ECDC4;
+            background: rgba(78, 205, 196, 0.05);
+        }
+        
+        .dropzone.loaded {
+            border-color: #4ECDC4;
+            border-style: solid;
+            background: rgba(78, 205, 196, 0.06);
+        }
+        
+        .dropzone.loaded-opt {
+            border-color: #F4A261;
+            border-style: solid;
+            background: rgba(244, 162, 97, 0.06);
+        }
+        
+        .dropzone span {
+            color: #666;
+            font-size: 11px;
+        }
+        
+        .dropzone strong {
+            color: #aaa;
+        }
+        
+        .dropzone .check {
+            color: #4ECDC4;
+            font-size: 14px;
+            display: block;
+            margin-bottom: 4px;
+        }
+        
+        .dropzone .check-opt {
+            color: #F4A261;
+            font-size: 14px;
+            display: block;
+            margin-bottom: 4px;
+        }
+        
         .start-btn {
-            width: 100%; padding: 12px; border-radius: 10px; border: none;
+            width: 100%;
+            padding: 12px;
+            border-radius: 10px;
+            border: none;
             background: linear-gradient(135deg, #4ECDC4, #2EC4B6);
-            color: #0c0c10; font-size: 13px; font-family: inherit;
-            font-weight: 700; cursor: pointer; margin-top: 4px; transition: opacity 0.2s;
+            color: #0c0c10;
+            font-size: 13px;
+            font-family: inherit;
+            font-weight: 700;
+            cursor: pointer;
+            margin-top: 4px;
+            transition: opacity 0.2s;
         }
-        .start-btn:disabled { background: #1e1e28; color: #444; cursor: not-allowed; }
-        .load-hint { font-size: 11px; color: #444; margin-top: 10px; }
-
+        
+        .start-btn:disabled {
+            background: #1e1e28;
+            color: #444;
+            cursor: not-allowed;
+        }
+        
+        .load-hint {
+            font-size: 11px;
+            color: #444;
+            margin-top: 10px;
+        }
         /* ─── MAIN APP ─── */
-        .app { padding: 16px 20px 40px; display: none; }
-        .app.active { display: block; }
-
+        
+        .app {
+            padding: 16px 20px 40px;
+            display: none;
+        }
+        
+        .app.active {
+            display: block;
+        }
+        
         .header {
-            display: flex; justify-content: space-between; align-items: center;
-            margin-bottom: 16px; flex-wrap: wrap; gap: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+            gap: 10px;
         }
-        .header h1 { font-size: 17px; font-weight: 700; }
-        .header .sub { font-size: 11px; color: #555; margin-top: 3px; }
-
-        .btn-row { display: flex; gap: 8px; }
+        
+        .header h1 {
+            font-size: 17px;
+            font-weight: 700;
+        }
+        
+        .header .sub {
+            font-size: 11px;
+            color: #555;
+            margin-top: 3px;
+        }
+        
+        .btn-row {
+            display: flex;
+            gap: 8px;
+        }
+        
         .export-btn {
-            background: #4ECDC4; color: #0c0c10; border: none;
-            border-radius: 8px; padding: 8px 18px; font-size: 12px;
-            font-family: inherit; font-weight: 700; cursor: pointer;
+            background: #4ECDC4;
+            color: #0c0c10;
+            border: none;
+            border-radius: 8px;
+            padding: 8px 18px;
+            font-size: 12px;
+            font-family: inherit;
+            font-weight: 700;
+            cursor: pointer;
         }
+        
         .skip-btn {
-            background: transparent; color: #555; border: 1px solid #2a2a32;
-            border-radius: 8px; padding: 8px 14px; font-size: 12px;
-            font-family: inherit; cursor: pointer;
+            background: transparent;
+            color: #555;
+            border: 1px solid #2a2a32;
+            border-radius: 8px;
+            padding: 8px 14px;
+            font-size: 12px;
+            font-family: inherit;
+            cursor: pointer;
         }
-
         /* Progress */
-        .progress-track { height: 3px; background: #1a1a22; border-radius: 2px; margin-bottom: 18px; }
-        .progress-fill  { height: 100%; background: linear-gradient(90deg, #4ECDC4, #F4A261); transition: width 0.4s; }
-
+        
+        .progress-track {
+            height: 3px;
+            background: #1a1a22;
+            border-radius: 2px;
+            margin-bottom: 18px;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #4ECDC4, #F4A261);
+            transition: width 0.4s;
+        }
         /* Nav dots */
-        .nav-dots { display: flex; gap: 3px; margin-bottom: 18px; flex-wrap: wrap; }
+        
+        .nav-dots {
+            display: flex;
+            gap: 3px;
+            margin-bottom: 18px;
+            flex-wrap: wrap;
+        }
+        
         .nav-dot {
-            width: 22px; height: 22px; border-radius: 5px; border: 1px solid #2a2a32;
-            background: transparent; color: #444; font-size: 8px; font-family: inherit;
-            cursor: pointer; display: flex; align-items: center; justify-content: center;
+            width: 22px;
+            height: 22px;
+            border-radius: 5px;
+            border: 1px solid #2a2a32;
+            background: transparent;
+            color: #444;
+            font-size: 8px;
+            font-family: inherit;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
-        .nav-dot.active    { border: 2px solid #4ECDC4; background: #1a1a22; color: #f0f0f0; font-weight: 700; }
-        .nav-dot.tagged    { background: rgba(78,205,196,0.18); color: #4ECDC4; }
-        .nav-dot.ai-pre    { background: rgba(244,162,97,0.12); color: #F4A261; }
-        .nav-dot.skipped   { background: rgba(100,100,120,0.15); color: #444; }
-        .nav-dot.corrected { background: rgba(138,99,210,0.22); color: #a78bfa; border-color: rgba(138,99,210,0.5); }
-
+        
+        .nav-dot.active {
+            border: 2px solid #4ECDC4;
+            background: #1a1a22;
+            color: #f0f0f0;
+            font-weight: 700;
+        }
+        
+        .nav-dot.tagged {
+            background: rgba(78, 205, 196, 0.18);
+            color: #4ECDC4;
+        }
+        
+        .nav-dot.ai-pre {
+            background: rgba(244, 162, 97, 0.12);
+            color: #F4A261;
+        }
+        
+        .nav-dot.skipped {
+            background: rgba(100, 100, 120, 0.15);
+            color: #444;
+        }
+        
+        .nav-dot.corrected {
+            background: rgba(138, 99, 210, 0.22);
+            color: #a78bfa;
+            border-color: rgba(138, 99, 210, 0.5);
+        }
         /* Corrected badge shown inside card label */
+        
         .corrected-badge {
-            display: inline-block; font-size: 9px; font-weight: 700;
-            color: #a78bfa; background: rgba(138,99,210,0.12);
-            border: 1px solid rgba(138,99,210,0.35); border-radius: 4px;
-            padding: 2px 7px; margin-left: 8px; vertical-align: middle;
-            text-transform: none; letter-spacing: 0;
+            display: inline-block;
+            font-size: 9px;
+            font-weight: 700;
+            color: #a78bfa;
+            background: rgba(138, 99, 210, 0.12);
+            border: 1px solid rgba(138, 99, 210, 0.35);
+            border-radius: 4px;
+            padding: 2px 7px;
+            margin-left: 8px;
+            vertical-align: middle;
+            text-transform: none;
+            letter-spacing: 0;
         }
-
         /* Legend row under nav dots */
+        
         .dot-legend {
-            display: flex; gap: 14px; margin-bottom: 14px; flex-wrap: wrap;
+            display: flex;
+            gap: 14px;
+            margin-bottom: 14px;
+            flex-wrap: wrap;
         }
+        
         .dot-legend-item {
-            display: flex; align-items: center; gap: 5px;
-            font-size: 10px; color: #555;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 10px;
+            color: #555;
         }
+        
         .dot-legend-swatch {
-            width: 10px; height: 10px; border-radius: 3px; border: 1px solid #333;
+            width: 10px;
+            height: 10px;
+            border-radius: 3px;
+            border: 1px solid #333;
         }
-
         /* Two columns */
-        .columns { display: grid; grid-template-columns: 1.15fr 0.85fr; gap: 18px; max-width: 1240px; }
-        @media (max-width: 900px) { .columns { grid-template-columns: 1fr; } }
-
+        
+        .columns {
+            display: grid;
+            grid-template-columns: 1.15fr 0.85fr;
+            gap: 18px;
+            max-width: 1240px;
+        }
+        
+        @media (max-width: 900px) {
+            .columns {
+                grid-template-columns: 1fr;
+            }
+        }
+        
         .card {
-            background: #141418; border: 1px solid #2a2a32;
-            border-radius: 12px; padding: 16px; margin-bottom: 14px;
+            background: #141418;
+            border: 1px solid #2a2a32;
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 14px;
         }
+        
         .card-label {
-            font-size: 10px; color: #555; text-transform: uppercase;
-            letter-spacing: 1px; margin-bottom: 12px; font-weight: 700;
+            font-size: 10px;
+            color: #555;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 12px;
+            font-weight: 700;
         }
-
         /* AI badge */
+        
         .ai-badge {
-            display: none; font-size: 9px; font-weight: 700;
-            color: #F4A261; background: rgba(244,162,97,0.1);
-            border: 1px solid rgba(244,162,97,0.3); border-radius: 4px;
-            padding: 2px 7px; margin-left: 8px; vertical-align: middle;
-            text-transform: none; letter-spacing: 0;
+            display: none;
+            font-size: 9px;
+            font-weight: 700;
+            color: #F4A261;
+            background: rgba(244, 162, 97, 0.1);
+            border: 1px solid rgba(244, 162, 97, 0.3);
+            border-radius: 4px;
+            padding: 2px 7px;
+            margin-left: 8px;
+            vertical-align: middle;
+            text-transform: none;
+            letter-spacing: 0;
         }
-
         /* ── Chat bubbles ── */
+        
         .chat-scroll {
-            max-height: 500px; overflow-y: auto;
-            display: flex; flex-direction: column; gap: 8px;
+            max-height: 500px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
         }
-        .chat-scroll::-webkit-scrollbar { width: 4px; }
-        .chat-scroll::-webkit-scrollbar-thumb { background: #2a2a32; border-radius: 4px; }
-
-        .bubble-row { display: flex; flex-direction: column; gap: 2px; }
-        .bubble-row.lead  { align-items: flex-start; }
-        .bubble-row.scott { align-items: flex-end; }
-
-        .bubble-speaker { font-size: 10px; color: #555; padding: 0 4px; }
-        .bubble-row.scott .bubble-speaker { color: #F4A261; }
-        .bubble-row.lead  .bubble-speaker { color: #4ECDC4; }
-
+        
+        .chat-scroll::-webkit-scrollbar {
+            width: 4px;
+        }
+        
+        .chat-scroll::-webkit-scrollbar-thumb {
+            background: #2a2a32;
+            border-radius: 4px;
+        }
+        
+        .bubble-row {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+        
+        .bubble-row.lead {
+            align-items: flex-start;
+        }
+        
+        .bubble-row.scott {
+            align-items: flex-end;
+        }
+        
+        .bubble-speaker {
+            font-size: 10px;
+            color: #555;
+            padding: 0 4px;
+        }
+        
+        .bubble-row.scott .bubble-speaker {
+            color: #F4A261;
+        }
+        
+        .bubble-row.lead .bubble-speaker {
+            color: #4ECDC4;
+        }
+        
         .bubble {
-            max-width: 80%; padding: 9px 13px; border-radius: 12px;
-            font-size: 12px; line-height: 1.65; white-space: pre-wrap; word-break: break-word;
+            max-width: 80%;
+            padding: 9px 13px;
+            border-radius: 12px;
+            font-size: 12px;
+            line-height: 1.65;
+            white-space: pre-wrap;
+            word-break: break-word;
         }
-        .bubble-row.lead  .bubble { background: #1e1e28; color: #ccc; border-radius: 12px 12px 12px 3px; }
-        .bubble-row.scott .bubble { background: #1a2a26; color: #ccc; border-radius: 12px 12px 3px 12px; }
+        
+        .bubble-row.lead .bubble {
+            background: #1e1e28;
+            color: #ccc;
+            border-radius: 12px 12px 12px 3px;
+        }
+        
+        .bubble-row.scott .bubble {
+            background: #1a2a26;
+            color: #ccc;
+            border-radius: 12px 12px 3px 12px;
+        }
+        
         .bubble-row.scott.target .bubble {
-            background: rgba(244,162,97,0.1); border: 1.5px solid #F4A261;
-            color: #f0f0f0; border-radius: 12px 12px 3px 12px;
+            background: rgba(244, 162, 97, 0.1);
+            border: 1.5px solid #F4A261;
+            color: #f0f0f0;
+            border-radius: 12px 12px 3px 12px;
         }
-
+        
         .divider {
-            text-align: center; font-size: 10px; color: #333;
-            margin: 4px 0; letter-spacing: 1px;
+            text-align: center;
+            font-size: 10px;
+            color: #333;
+            margin: 4px 0;
+            letter-spacing: 1px;
         }
-
         /* Lead name chip in card header */
+        
         .lead-chip {
-            font-size: 10px; color: #4ECDC4; background: rgba(78,205,196,0.09);
-            border: 1px solid rgba(78,205,196,0.2); border-radius: 4px;
-            padding: 2px 8px; font-weight: 600; float: right;
-            text-transform: none; letter-spacing: 0;
+            font-size: 10px;
+            color: #4ECDC4;
+            background: rgba(78, 205, 196, 0.09);
+            border: 1px solid rgba(78, 205, 196, 0.2);
+            border-radius: 4px;
+            padding: 2px 8px;
+            font-weight: 600;
+            float: right;
+            text-transform: none;
+            letter-spacing: 0;
         }
-
         /* ── Right panel ── */
-
         /* Non-sales toggle */
+        
         .nonsales-row {
-            display: flex; align-items: center; gap: 10px;
-            padding: 10px 12px; border-radius: 9px; border: 1.5px solid #2a2a32;
-            cursor: pointer; margin-bottom: 8px; transition: all 0.15s;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 12px;
+            border-radius: 9px;
+            border: 1.5px solid #2a2a32;
+            cursor: pointer;
+            margin-bottom: 8px;
+            transition: all 0.15s;
         }
-        .nonsales-row.active { border-color: #8D99AE; background: rgba(141,153,174,0.08); }
+        
+        .nonsales-row.active {
+            border-color: #8D99AE;
+            background: rgba(141, 153, 174, 0.08);
+        }
+        
         .toggle-box {
-            width: 16px; height: 16px; border-radius: 4px; border: 1.5px solid #444;
-            display: flex; align-items: center; justify-content: center; font-size: 10px; flex-shrink: 0;
+            width: 16px;
+            height: 16px;
+            border-radius: 4px;
+            border: 1.5px solid #444;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 10px;
+            flex-shrink: 0;
         }
-        .nonsales-row.active .toggle-box { border-color: #8D99AE; background: #8D99AE; color: #0c0c10; }
-        .nonsales-label { font-size: 11px; color: #777; }
-        .nonsales-row.active .nonsales-label { color: #8D99AE; }
-
+        
+        .nonsales-row.active .toggle-box {
+            border-color: #8D99AE;
+            background: #8D99AE;
+            color: #0c0c10;
+        }
+        
+        .nonsales-label {
+            font-size: 11px;
+            color: #777;
+        }
+        
+        .nonsales-row.active .nonsales-label {
+            color: #8D99AE;
+        }
         /* DM workflow stages */
-        .dm-stages { display: flex; flex-direction: column; gap: 5px; }
-        .dm-stages.disabled { opacity: 0.25; pointer-events: none; }
-
+        
+        .dm-stages {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        
+        .dm-stages.disabled {
+            opacity: 0.25;
+            pointer-events: none;
+        }
+        
         .dm-stage-btn {
-            display: flex; align-items: flex-start; gap: 10px; padding: 9px 12px;
-            border-radius: 9px; border: 1.5px solid #2a2a32; background: transparent;
-            color: #777; font-family: inherit; font-size: 11px;
-            cursor: pointer; transition: all 0.15s; text-align: left; width: 100%;
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            padding: 9px 12px;
+            border-radius: 9px;
+            border: 1.5px solid #2a2a32;
+            background: transparent;
+            color: #777;
+            font-family: inherit;
+            font-size: 11px;
+            cursor: pointer;
+            transition: all 0.15s;
+            text-align: left;
+            width: 100%;
         }
-        .dm-stage-btn:hover { border-color: #444; color: #aaa; }
-        .dm-stage-btn.active { border-color: #F4A261; background: rgba(244,162,97,0.09); color: #F4A261; }
-        .dm-stage-btn.case-a.active { border-color: #4ECDC4; background: rgba(78,205,196,0.09); color: #4ECDC4; }
-        .dm-stage-btn.case-b.active { border-color: #8D99AE; background: rgba(141,153,174,0.09); color: #8D99AE; }
-
+        
+        .dm-stage-btn:hover {
+            border-color: #444;
+            color: #aaa;
+        }
+        
+        .dm-stage-btn.active {
+            border-color: #F4A261;
+            background: rgba(244, 162, 97, 0.09);
+            color: #F4A261;
+        }
+        
+        .dm-stage-btn.case-a.active {
+            border-color: #4ECDC4;
+            background: rgba(78, 205, 196, 0.09);
+            color: #4ECDC4;
+        }
+        
+        .dm-stage-btn.case-b.active {
+            border-color: #8D99AE;
+            background: rgba(141, 153, 174, 0.09);
+            color: #8D99AE;
+        }
+        
         .dm-stage-num {
-            min-width: 20px; height: 20px; border-radius: 50%; border: 1.5px solid #333;
-            display: flex; align-items: center; justify-content: center;
-            font-size: 10px; font-weight: 700; color: #555; flex-shrink: 0; margin-top: 1px;
+            min-width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            border: 1.5px solid #333;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 10px;
+            font-weight: 700;
+            color: #555;
+            flex-shrink: 0;
+            margin-top: 1px;
         }
-        .dm-stage-btn.active        .dm-stage-num { border-color: #F4A261; color: #F4A261; }
-        .dm-stage-btn.case-a.active .dm-stage-num { border-color: #4ECDC4; color: #4ECDC4; }
-        .dm-stage-btn.case-b.active .dm-stage-num { border-color: #8D99AE; color: #8D99AE; }
-
-        .dm-stage-text .dm-stage-title { font-weight: 600; }
-        .dm-stage-text .dm-stage-desc  { font-size: 10px; opacity: 0.6; margin-top: 2px; }
-
+        
+        .dm-stage-btn.active .dm-stage-num {
+            border-color: #F4A261;
+            color: #F4A261;
+        }
+        
+        .dm-stage-btn.case-a.active .dm-stage-num {
+            border-color: #4ECDC4;
+            color: #4ECDC4;
+        }
+        
+        .dm-stage-btn.case-b.active .dm-stage-num {
+            border-color: #8D99AE;
+            color: #8D99AE;
+        }
+        
+        .dm-stage-text .dm-stage-title {
+            font-weight: 600;
+        }
+        
+        .dm-stage-text .dm-stage-desc {
+            font-size: 10px;
+            opacity: 0.6;
+            margin-top: 2px;
+        }
         /* Tone pills */
-        .tone-wrap { display: flex; flex-wrap: wrap; gap: 5px; }
+        
+        .tone-wrap {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+        }
+        
         .tone-pill {
-            display: inline-flex; align-items: center; gap: 5px; padding: 5px 11px;
-            border-radius: 20px; font-size: 11px; font-family: inherit;
-            font-weight: 500; cursor: pointer; transition: all 0.15s;
-            white-space: nowrap; background: transparent;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 5px 11px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-family: inherit;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.15s;
+            white-space: nowrap;
+            background: transparent;
         }
-
         /* Intent cards */
+        
         .intent-card {
-            display: flex; flex-direction: column; gap: 2px; padding: 8px 12px;
-            border-radius: 9px; border: 1.5px solid #2a2a32; background: transparent;
-            color: #888; font-size: 11px; font-family: inherit;
-            cursor: pointer; transition: all 0.15s; text-align: left; width: 100%;
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            padding: 8px 12px;
+            border-radius: 9px;
+            border: 1.5px solid #2a2a32;
+            background: transparent;
+            color: #888;
+            font-size: 11px;
+            font-family: inherit;
+            cursor: pointer;
+            transition: all 0.15s;
+            text-align: left;
+            width: 100%;
         }
-        .intent-card.active { border-color: #4ECDC4; background: rgba(78,205,196,0.08); color: #4ECDC4; }
-        .intent-card .label { font-weight: 600; color: #aaa; }
-        .intent-card.active .label { color: #f0f0f0; }
-        .intent-card .desc  { font-size: 10px; opacity: 0.65; }
-
+        
+        .intent-card.active {
+            border-color: #4ECDC4;
+            background: rgba(78, 205, 196, 0.08);
+            color: #4ECDC4;
+        }
+        
+        .intent-card .label {
+            font-weight: 600;
+            color: #aaa;
+        }
+        
+        .intent-card.active .label {
+            color: #f0f0f0;
+        }
+        
+        .intent-card .desc {
+            font-size: 10px;
+            opacity: 0.65;
+        }
         /* Sales stage */
-        .stage-row { display: flex; gap: 6px; }
+        
+        .stage-row {
+            display: flex;
+            gap: 6px;
+        }
+        
         .stage-btn {
-            flex: 1; padding: 10px 6px; border-radius: 9px; border: 1.5px solid #2a2a32;
-            background: transparent; color: #666; font-size: 11px; font-family: inherit;
-            font-weight: 500; cursor: pointer; transition: all 0.15s;
-            display: flex; flex-direction: column; align-items: center; gap: 3px;
+            flex: 1;
+            padding: 10px 6px;
+            border-radius: 9px;
+            border: 1.5px solid #2a2a32;
+            background: transparent;
+            color: #666;
+            font-size: 11px;
+            font-family: inherit;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.15s;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 3px;
         }
-        .stage-btn.active { border-color: #F4A261; background: rgba(244,162,97,0.1); color: #F4A261; }
-        .stage-btn .icon  { font-size: 16px; }
-
+        
+        .stage-btn.active {
+            border-color: #F4A261;
+            background: rgba(244, 162, 97, 0.1);
+            color: #F4A261;
+        }
+        
+        .stage-btn .icon {
+            font-size: 16px;
+        }
         /* Status */
+        
         .status {
-            padding: 10px 14px; border-radius: 9px;
-            text-align: center; font-size: 11px; font-weight: 600;
+            padding: 10px 14px;
+            border-radius: 9px;
+            text-align: center;
+            font-size: 11px;
+            font-weight: 600;
         }
-        .status.complete   { background: rgba(78,205,196,0.08);  border: 1px solid rgba(78,205,196,0.2);  color: #4ECDC4; }
-        .status.incomplete { background: rgba(255,107,53,0.06); border: 1px solid rgba(255,107,53,0.18); color: #FF6B35; }
-
+        
+        .status.complete {
+            background: rgba(78, 205, 196, 0.08);
+            border: 1px solid rgba(78, 205, 196, 0.2);
+            color: #4ECDC4;
+        }
+        
+        .status.incomplete {
+            background: rgba(255, 107, 53, 0.06);
+            border: 1px solid rgba(255, 107, 53, 0.18);
+            color: #FF6B35;
+        }
         /* Bottom nav */
+        
         .bottom-nav {
-            display: flex; justify-content: space-between; align-items: center;
-            margin-top: 20px; max-width: 1240px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 20px;
+            max-width: 1240px;
         }
+        
         .nav-btn {
-            background: transparent; border: 1px solid #2a2a32; border-radius: 8px;
-            padding: 9px 18px; color: #aaa; font-size: 12px; font-family: inherit; cursor: pointer;
+            background: transparent;
+            border: 1px solid #2a2a32;
+            border-radius: 8px;
+            padding: 9px 18px;
+            color: #aaa;
+            font-size: 12px;
+            font-family: inherit;
+            cursor: pointer;
         }
-        .nav-btn:disabled { color: #333; cursor: default; }
-        .nav-btn.next { background: linear-gradient(135deg,#4ECDC4,#2EC4B6); border: none; color: #0c0c10; font-weight: 700; }
-        .nav-btn.next:disabled { background: transparent; border: 1px solid #2a2a32; color: #333; }
-        .nav-info { font-size: 11px; color: #555; text-align: center; }
-
+        
+        .nav-btn:disabled {
+            color: #333;
+            cursor: default;
+        }
+        
+        .nav-btn.next {
+            background: linear-gradient(135deg, #4ECDC4, #2EC4B6);
+            border: none;
+            color: #0c0c10;
+            font-weight: 700;
+        }
+        
+        .nav-btn.next:disabled {
+            background: transparent;
+            border: 1px solid #2a2a32;
+            color: #333;
+        }
+        
+        .nav-info {
+            font-size: 11px;
+            color: #555;
+            text-align: center;
+        }
         /* Toast */
+        
         .toast {
-            position: fixed; bottom: 24px; right: 24px;
-            background: #4ECDC4; color: #0c0c10; padding: 11px 18px;
-            border-radius: 10px; font-size: 12px; font-weight: 700;
-            font-family: inherit; display: none;
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            background: #4ECDC4;
+            color: #0c0c10;
+            padding: 11px 18px;
+            border-radius: 10px;
+            font-size: 12px;
+            font-weight: 700;
+            font-family: inherit;
+            display: none;
         }
-        .toast.show { display: block; animation: fadeIn 0.3s ease; }
+        
+        .toast.show {
+            display: block;
+            animation: fadeIn 0.3s ease;
+        }
+        
         @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(8px); }
-            to   { opacity: 1; transform: translateY(0); }
+            from {
+                opacity: 0;
+                transform: translateY(8px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
         }
     </style>
 </head>
+
 <body>
 
-<!-- LOAD MODAL (shown only while fetching from server) -->
-<div class="load-modal" id="loadModal">
-    <div class="load-box" style="max-width:480px;text-align:center">
-        <div style="font-size:48px;margin-bottom:14px">💬</div>
-        <h1>DM Tagger</h1>
-        <p id="loadStatus" style="color:#888;font-size:13px;margin-top:12px">Loading DMs from server…</p>
-        <div id="loadError" style="display:none;color:#FF6B35;font-size:12px;margin-top:12px"></div>
-    </div>
-</div>
-
-<!-- MAIN APP -->
-<div class="app" id="app">
-    <div class="header">
-        <div>
-            <h1>💬 DM Tagger</h1>
-            <div class="sub" id="progressText">0/0 tagged · 0% complete</div>
-        </div>
-        <div class="btn-row">
-            <button class="skip-btn" id="skipBtn">Skip →</button>
-            <button class="export-btn" id="exportBtn">Export JSON ↓</button>
+    <!-- LOAD MODAL (shown only while fetching from server) -->
+    <div class="load-modal" id="loadModal">
+        <div class="load-box" style="max-width:480px;text-align:center">
+            <div style="font-size:48px;margin-bottom:14px">💬</div>
+            <h1>DM Tagger</h1>
+            <p id="loadStatus" style="color:#888;font-size:13px;margin-top:12px">Loading DMs from server…</p>
+            <div id="loadError" style="display:none;color:#FF6B35;font-size:12px;margin-top:12px"></div>
         </div>
     </div>
 
-    <div class="progress-track"><div class="progress-fill" id="progressBar"></div></div>
-    <div class="nav-dots" id="navDots"></div>
-    <div class="dot-legend">
-        <div class="dot-legend-item"><div class="dot-legend-swatch" style="background:rgba(78,205,196,0.18);border-color:rgba(78,205,196,0.4)"></div>Fully tagged</div>
-        <div class="dot-legend-item"><div class="dot-legend-swatch" style="background:rgba(138,99,210,0.22);border-color:rgba(138,99,210,0.5)"></div>Corrected</div>
-        <div class="dot-legend-item"><div class="dot-legend-swatch" style="background:rgba(244,162,97,0.12);border-color:rgba(244,162,97,0.4)"></div>AI pre-labeled</div>
-        <div class="dot-legend-item"><div class="dot-legend-swatch" style="background:rgba(100,100,120,0.15);border-color:#333"></div>Skipped</div>
-        <div class="dot-legend-item"><div class="dot-legend-swatch" style="background:transparent;border-color:#2a2a32"></div>Untagged</div>
-    </div>
+    <!-- MAIN APP -->
+    <div class="app" id="app">
+        <div class="header">
+            <div>
+                <h1>💬 DM Tagger</h1>
+                <div class="sub" id="progressText">0/0 tagged · 0% complete</div>
+            </div>
+            <div class="btn-row">
+                <button class="skip-btn" id="skipBtn">Skip →</button>
+                <button class="export-btn" id="exportBtn">Export JSON ↓</button>
+            </div>
+        </div>
 
-    <div class="columns">
+        <div class="progress-track">
+            <div class="progress-fill" id="progressBar"></div>
+        </div>
+        <div class="nav-dots" id="navDots"></div>
+        <div class="dot-legend">
+            <div class="dot-legend-item">
+                <div class="dot-legend-swatch" style="background:rgba(78,205,196,0.18);border-color:rgba(78,205,196,0.4)"></div>Fully tagged</div>
+            <div class="dot-legend-item">
+                <div class="dot-legend-swatch" style="background:rgba(138,99,210,0.22);border-color:rgba(138,99,210,0.5)"></div>Corrected</div>
+            <div class="dot-legend-item">
+                <div class="dot-legend-swatch" style="background:rgba(244,162,97,0.12);border-color:rgba(244,162,97,0.4)"></div>AI pre-labeled</div>
+            <div class="dot-legend-item">
+                <div class="dot-legend-swatch" style="background:rgba(100,100,120,0.15);border-color:#333"></div>Skipped</div>
+            <div class="dot-legend-item">
+                <div class="dot-legend-swatch" style="background:transparent;border-color:#2a2a32"></div>Untagged</div>
+        </div>
 
-        <!-- LEFT: Conversation -->
-        <div>
-            <div class="card">
-                <div class="card-label">
-                    DM Conversation
-                    <span id="leadNameChip" class="lead-chip" style="display:none"></span>
-                    <span style="float:right;clear:right;color:#444;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;margin-top:2px" id="entryIndex"></span>
+        <div class="columns">
+
+            <!-- LEFT: Conversation -->
+            <div>
+                <div class="card">
+                    <div class="card-label">
+                        DM Conversation
+                        <span id="leadNameChip" class="lead-chip" style="display:none"></span>
+                        <span style="float:right;clear:right;color:#444;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;margin-top:2px" id="entryIndex"></span>
+                    </div>
+                    <div class="chat-scroll" id="chatScroll"></div>
                 </div>
-                <div class="chat-scroll" id="chatScroll"></div>
+            </div>
+
+            <!-- RIGHT: Labels -->
+            <div>
+
+                <!-- DM Workflow Stage -->
+                <div class="card">
+                    <div class="card-label">
+                        DM Workflow Stage <span style="color:#333">(pick one)</span>
+                        <span class="ai-badge" id="aiBadge">✦ AI suggested</span>
+                        <span class="corrected-badge" id="correctedBadge" style="display:none">✎ Manually corrected</span>
+                    </div>
+
+                    <!-- Non-sales toggle -->
+                    <div class="nonsales-row" id="nonsalesToggle">
+                        <div class="toggle-box" id="nonsalesBox"></div>
+                        <span class="nonsales-label">Not a sales DM (WhatsApp / casual) — skip workflow stage</span>
+                    </div>
+
+                    <div class="dm-stages" id="stageContainer"></div>
+                </div>
+
+                <!-- Tone Tags -->
+                <div class="card">
+                    <div class="card-label">Tone Tags <span style="color:#333">(select all that apply)</span></div>
+                    <div class="tone-wrap" id="toneContainer"></div>
+                </div>
+
+                <!-- Intent -->
+                <div class="card">
+                    <div class="card-label">Intent <span style="color:#333">(pick one)</span></div>
+                    <div id="intentContainer" style="display:flex;flex-direction:column;gap:5px"></div>
+                </div>
+
+                <!-- Sales Stage -->
+                <div class="card">
+                    <div class="card-label">Sales Stage</div>
+                    <div class="stage-row" id="salesStageContainer"></div>
+                </div>
+
+                <div class="status incomplete" id="statusBadge">◯ Complete all fields above</div>
             </div>
         </div>
 
-        <!-- RIGHT: Labels -->
-        <div>
-
-            <!-- DM Workflow Stage -->
-            <div class="card">
-                <div class="card-label">
-                    DM Workflow Stage <span style="color:#333">(pick one)</span>
-                    <span class="ai-badge" id="aiBadge">✦ AI suggested</span>
-                    <span class="corrected-badge" id="correctedBadge" style="display:none">✎ Manually corrected</span>
-                </div>
-
-                <!-- Non-sales toggle -->
-                <div class="nonsales-row" id="nonsalesToggle">
-                    <div class="toggle-box" id="nonsalesBox"></div>
-                    <span class="nonsales-label">Not a sales DM (WhatsApp / casual) — skip workflow stage</span>
-                </div>
-
-                <div class="dm-stages" id="stageContainer"></div>
-            </div>
-
-            <!-- Tone Tags -->
-            <div class="card">
-                <div class="card-label">Tone Tags <span style="color:#333">(select all that apply)</span></div>
-                <div class="tone-wrap" id="toneContainer"></div>
-            </div>
-
-            <!-- Intent -->
-            <div class="card">
-                <div class="card-label">Intent <span style="color:#333">(pick one)</span></div>
-                <div id="intentContainer" style="display:flex;flex-direction:column;gap:5px"></div>
-            </div>
-
-            <!-- Sales Stage -->
-            <div class="card">
-                <div class="card-label">Sales Stage</div>
-                <div class="stage-row" id="salesStageContainer"></div>
-            </div>
-
-            <div class="status incomplete" id="statusBadge">◯ Complete all fields above</div>
+        <div class="bottom-nav">
+            <button class="nav-btn" id="prevBtn">← Previous</button>
+            <span class="nav-info" id="navInfo">1 / 1 · Arrow keys to navigate</span>
+            <button class="nav-btn next" id="nextBtn">Next →</button>
         </div>
     </div>
 
-    <div class="bottom-nav">
-        <button class="nav-btn" id="prevBtn">← Previous</button>
-        <span class="nav-info" id="navInfo">1 / 1 · Arrow keys to navigate</span>
-        <button class="nav-btn next" id="nextBtn">Next →</button>
-    </div>
-</div>
+    <div class="toast" id="toast">✓ Exported!</div>
 
-<div class="toast" id="toast">✓ Exported!</div>
+    <script>
+        // ─── DM WORKFLOW STAGES ───────────────────────────────────────────────────────
+        const DM_STAGES = [{
+            num: 1,
+            value: "connect",
+            cls: "",
+            title: "Connect",
+            desc: "Open with something specific — shared interest, their post, a reference"
+        }, {
+            num: 2,
+            value: "gather-intel",
+            cls: "",
+            title: "Gather Intel",
+            desc: "Soft qualify — learn their history, pain, current situation"
+        }, {
+            num: 3,
+            value: "share-authority",
+            cls: "",
+            title: "Share Authority",
+            desc: "Vulnerability, personal story, current life, expertise, future vision"
+        }, {
+            num: 4,
+            value: "frame-outcome",
+            cls: "",
+            title: "Frame Dream Outcome",
+            desc: "More intel — steer toward their goals and business situation"
+        }, {
+            num: 5,
+            value: "offer-call",
+            cls: "",
+            title: "Offer the Call",
+            desc: "Invite to a diagnostic call — exploring, not coaching yet"
+        }, {
+            num: 6,
+            value: "pre-qualify",
+            cls: "",
+            title: "Pre-Qualify",
+            desc: "Committed or exploratory? Do they have $1K–$5K to invest?"
+        }, {
+            num: "A",
+            value: "send-calendly",
+            cls: "case-a",
+            title: "Case A — Calendly",
+            desc: "Qualified + committed → send Calendly link, ask them to confirm"
+        }, {
+            num: "B",
+            value: "nurture-free",
+            cls: "case-b",
+            title: "Case B — Nurture Out",
+            desc: "Not ready / no budget → Skool link, free resources, check back later"
+        }, ];
 
-<script>
-// ─── DM WORKFLOW STAGES ───────────────────────────────────────────────────────
-const DM_STAGES = [
-    { num:1,   value:"connect",         cls:"",       title:"Connect",             desc:"Open with something specific — shared interest, their post, a reference" },
-    { num:2,   value:"gather-intel",    cls:"",       title:"Gather Intel",        desc:"Soft qualify — learn their history, pain, current situation" },
-    { num:3,   value:"share-authority", cls:"",       title:"Share Authority",     desc:"Vulnerability, personal story, current life, expertise, future vision" },
-    { num:4,   value:"frame-outcome",   cls:"",       title:"Frame Dream Outcome", desc:"More intel — steer toward their goals and business situation" },
-    { num:5,   value:"offer-call",      cls:"",       title:"Offer the Call",      desc:"Invite to a diagnostic call — exploring, not coaching yet" },
-    { num:6,   value:"pre-qualify",     cls:"",       title:"Pre-Qualify",         desc:"Committed or exploratory? Do they have $1K–$5K to invest?" },
-    { num:"A", value:"send-calendly",   cls:"case-a", title:"Case A — Calendly",   desc:"Qualified + committed → send Calendly link, ask them to confirm" },
-    { num:"B", value:"nurture-free",    cls:"case-b", title:"Case B — Nurture Out",desc:"Not ready / no budget → Skool link, free resources, check back later" },
-];
+        // ─── TONE OPTIONS ─────────────────────────────────────────────────────────────
+        const TONE_OPTIONS = [{
+            label: "Hype / Energy",
+            value: "hype",
+            color: "#FF6B35"
+        }, {
+            label: "Brotherhood",
+            value: "brotherhood",
+            color: "#4ECDC4"
+        }, {
+            label: "Motivational",
+            value: "motivational",
+            color: "#F77F00"
+        }, {
+            label: "Chit-chat",
+            value: "chit-chat",
+            color: "#4ECDC4"
+        }, {
+            label: "Curiosity",
+            value: "curiosity",
+            color: "#4ECDC4"
+        }, {
+            label: "Empathy",
+            value: "empathy",
+            color: "#A8DADC"
+        }, {
+            label: "Authority",
+            value: "authority",
+            color: "#5E9BBA"
+        }, {
+            label: "Tough Love",
+            value: "tough-love",
+            color: "#E63946"
+        }, {
+            label: "Mystery / Teasing",
+            value: "mystery-teasing",
+            color: "#F4A261"
+        }, {
+            label: "Teasing Future Value",
+            value: "teasing-future-value",
+            color: "#F4A261"
+        }, {
+            label: "Vulnerability",
+            value: "vulnerability",
+            color: "#8D99AE"
+        }, {
+            label: "Humor / Playful",
+            value: "humor",
+            color: "#2EC4B6"
+        }, {
+            label: "Bonding / Rapport",
+            value: "bonding-rapport",
+            color: "#2EC4B9"
+        }, {
+            label: "Self-Aggrandization",
+            value: "self-aggrandization",
+            color: "#264653"
+        }, {
+            label: "Direct / No-BS",
+            value: "direct",
+            color: "#888"
+        }, {
+            label: "Storytelling",
+            value: "storytelling",
+            color: "#E9C46A"
+        }, {
+            label: "Praise",
+            value: "praise",
+            color: "#98C1D9"
+        }, {
+            label: "Gratitude",
+            value: "gratitude",
+            color: "#A8DADC"
+        }, {
+            label: "Casual / Chill",
+            value: "casual",
+            color: "#606C38"
+        }, {
+            label: "Questions",
+            value: "questions",
+            color: "#FFD700"
+        }, ];
 
-// ─── TONE OPTIONS ─────────────────────────────────────────────────────────────
-const TONE_OPTIONS = [
-    { label:"Hype / Energy",        value:"hype",               color:"#FF6B35" },
-    { label:"Brotherhood",          value:"brotherhood",         color:"#4ECDC4" },
-    { label:"Motivational",         value:"motivational",        color:"#F77F00" },
-    { label:"Chit-chat",            value:"chit-chat",           color:"#4ECDC4" },
-    { label:"Curiosity",            value:"curiosity",           color:"#4ECDC4" },
-    { label:"Empathy",              value:"empathy",             color:"#A8DADC" },
-    { label:"Authority",            value:"authority",           color:"#5E9BBA" },
-    { label:"Tough Love",           value:"tough-love",          color:"#E63946" },
-    { label:"Mystery / Teasing",    value:"mystery-teasing",     color:"#F4A261" },
-    { label:"Teasing Future Value", value:"teasing-future-value",color:"#F4A261" },
-    { label:"Vulnerability",        value:"vulnerability",       color:"#8D99AE" },
-    { label:"Humor / Playful",      value:"humor",               color:"#2EC4B6" },
-    { label:"Bonding / Rapport",    value:"bonding-rapport",     color:"#2EC4B9" },
-    { label:"Self-Aggrandization",  value:"self-aggrandization", color:"#264653" },
-    { label:"Direct / No-BS",       value:"direct",              color:"#888"    },
-    { label:"Storytelling",         value:"storytelling",        color:"#E9C46A" },
-    { label:"Praise",               value:"praise",              color:"#98C1D9" },
-    { label:"Gratitude",            value:"gratitude",           color:"#A8DADC" },
-    { label:"Casual / Chill",       value:"casual",              color:"#606C38" },
-];
+        // ─── INTENT OPTIONS ───────────────────────────────────────────────────────────
+        const INTENT_OPTIONS = [{
+            label: "Engagement / Nurture",
+            value: "engagement-nurture",
+            desc: "Build relationship, keep them active"
+        }, {
+            label: "Value Delivery",
+            value: "value-delivery",
+            desc: "Share insight, teach something useful"
+        }, {
+            label: "Info Gathering",
+            value: "info-gathering",
+            desc: "Ask questions to learn their situation"
+        }, {
+            label: "Lead Qualification",
+            value: "lead-qualification",
+            desc: "Probe budget, commitment, fit"
+        }, {
+            label: "Authority-Proofing",
+            value: "authority-proofing",
+            desc: "Demonstrate expertise naturally"
+        }, {
+            label: "Pain Agitation",
+            value: "pain-agitation",
+            desc: "Surface or amplify their problem"
+        }, {
+            label: "Objection Handling",
+            value: "objection-handling",
+            desc: "Address doubt or resistance"
+        }, {
+            label: "Close to Call",
+            value: "close-to-call",
+            desc: "Push toward booking a sales call"
+        }, {
+            label: "Funneling",
+            value: "funneling",
+            desc: "Guide toward Skool community / resources"
+        }, {
+            label: "Social Proof",
+            value: "social-proof",
+            desc: "Share results, wins, transformations"
+        }, {
+            label: "Acknowledgement",
+            value: "acknowledgement",
+            desc: "Short reaction, no agenda"
+        }, {
+            label: "Community Building",
+            value: "community-building",
+            desc: "Make them feel part of something"
+        }, {
+            label: "Redirect",
+            value: "redirect",
+            desc: "Steer conversation or set boundary"
+        }, ];
 
-// ─── INTENT OPTIONS ───────────────────────────────────────────────────────────
-const INTENT_OPTIONS = [
-    { label:"Engagement / Nurture", value:"engagement-nurture",  desc:"Build relationship, keep them active" },
-    { label:"Value Delivery",       value:"value-delivery",       desc:"Share insight, teach something useful" },
-    { label:"Info Gathering",       value:"info-gathering",       desc:"Ask questions to learn their situation" },
-    { label:"Lead Qualification",   value:"lead-qualification",   desc:"Probe budget, commitment, fit" },
-    { label:"Authority-Proofing",   value:"authority-proofing",   desc:"Demonstrate expertise naturally" },
-    { label:"Pain Agitation",       value:"pain-agitation",       desc:"Surface or amplify their problem" },
-    { label:"Objection Handling",   value:"objection-handling",   desc:"Address doubt or resistance" },
-    { label:"Close to Call",        value:"close-to-call",        desc:"Push toward booking a sales call" },
-    { label:"Funneling",            value:"funneling",            desc:"Guide toward Skool community / resources" },
-    { label:"Social Proof",         value:"social-proof",         desc:"Share results, wins, transformations" },
-    { label:"Acknowledgement",      value:"acknowledgement",      desc:"Short reaction, no agenda" },
-    { label:"Community Building",   value:"community-building",   desc:"Make them feel part of something" },
-    { label:"Redirect",             value:"redirect",             desc:"Steer conversation or set boundary" },
-];
+        // ─── SALES STAGES ─────────────────────────────────────────────────────────────
+        const SALES_STAGES = [{
+            label: "Awareness",
+            value: "awareness",
+            icon: "👁"
+        }, {
+            label: "Engagement",
+            value: "engagement",
+            icon: "💬"
+        }, {
+            label: "Nurture",
+            value: "nurture",
+            icon: "🌱"
+        }, {
+            label: "Ask",
+            value: "ask",
+            icon: "🎯"
+        }, ];
 
-// ─── SALES STAGES ─────────────────────────────────────────────────────────────
-const SALES_STAGES = [
-    { label:"Awareness",  value:"awareness",  icon:"👁" },
-    { label:"Engagement", value:"engagement", icon:"💬" },
-    { label:"Nurture",    value:"nurture",    icon:"🌱" },
-    { label:"Ask",        value:"ask",        icon:"🎯" },
-];
+        // ─── STATE ────────────────────────────────────────────────────────────────────
+        let entries = [];
+        let currentIndex = 0;
+        let pendingData = null; // parsed entries waiting for startTagging()
+        let preLabels = {}; // key → label object from dm_prelabeled.json
 
-// ─── STATE ────────────────────────────────────────────────────────────────────
-let entries       = [];
-let currentIndex  = 0;
-let pendingData   = null;   // parsed entries waiting for startTagging()
-let preLabels     = {};     // key → label object from dm_prelabeled.json
+        // Correction tracking: snapshot of tags at the moment the entry was first rendered
+        // entrySnapshots[index] = cloned tags object before any manual edit
+        const entrySnapshots = {};
+        // Set of correction_ids already posted so we can upsert, not duplicate
+        const postedCorrectionIds = new Set();
 
-// Correction tracking: snapshot of tags at the moment the entry was first rendered
-// entrySnapshots[index] = cloned tags object before any manual edit
-const entrySnapshots = {};
-// Set of correction_ids already posted so we can upsert, not duplicate
-const postedCorrectionIds = new Set();
+        const $ = id => document.getElementById(id);
 
-const $ = id => document.getElementById(id);
+        // ─── LEAD NAME EXTRACTION ─────────────────────────────────────────────────────
+        function extractLeadName(msgs) {
+            // Try system prompt first
+            const sys = (msgs[0] || {}).content || '';
+            const patterns = [
+                /conversation with[:\s]+([A-Za-z][a-z]+)/i,
+                /dm from[:\s]+([A-Za-z][a-z]+)/i,
+                /talking (?:to|with)[:\s]+([A-Za-z][a-z]+)/i,
+                /lead[:\s]+([A-Za-z][a-z]+)/i,
+                /\bName[:\s]+([A-Za-z][a-z]+)/,
+            ];
+            for (const p of patterns) {
+                const m = sys.match(p);
+                if (m && m[1].length > 1) return m[1];
+            }
 
-// ─── LEAD NAME EXTRACTION ─────────────────────────────────────────────────────
-function extractLeadName(msgs) {
-    // Try system prompt first
-    const sys = (msgs[0] || {}).content || '';
-    const patterns = [
-        /conversation with[:\s]+([A-Za-z][a-z]+)/i,
-        /dm from[:\s]+([A-Za-z][a-z]+)/i,
-        /talking (?:to|with)[:\s]+([A-Za-z][a-z]+)/i,
-        /lead[:\s]+([A-Za-z][a-z]+)/i,
-        /\bName[:\s]+([A-Za-z][a-z]+)/,
-    ];
-    for (const p of patterns) {
-        const m = sys.match(p);
-        if (m && m[1].length > 1) return m[1];
-    }
+            // Try extracting from first user message — look for "Hi [Name]" or "[Name]:" opener
+            const firstUser = (msgs[1] || {}).content || '';
+            const opener = firstUser.match(/^(?:Hi|Hey|Hello)[,\s]+([A-Z][a-z]+)/);
+            if (opener) return opener[1];
 
-    // Try extracting from first user message — look for "Hi [Name]" or "[Name]:" opener
-    const firstUser = (msgs[1] || {}).content || '';
-    const opener = firstUser.match(/^(?:Hi|Hey|Hello)[,\s]+([A-Z][a-z]+)/);
-    if (opener) return opener[1];
+            // Try to find a name being addressed in the first user message
+            const addressed = firstUser.match(/,\s+([A-Z][a-z]+)[!.?]/);
+            if (addressed && addressed[1] !== 'I') return addressed[1];
 
-    // Try to find a name being addressed in the first user message
-    const addressed = firstUser.match(/,\s+([A-Z][a-z]+)[!.?]/);
-    if (addressed && addressed[1] !== 'I') return addressed[1];
-
-    return null;
-}
-
-// ─── PARSE JSONL ──────────────────────────────────────────────────────────────
-function parseJSONL(text) {
-    const lines    = text.trim().split('\n');
-    const rawUnits = [];
-
-    for (const line of lines) {
-        let d;
-        try { d = JSON.parse(line.trim()); } catch (e) { continue; }
-
-        const msgs = d.messages || [];
-        if (msgs.length < 3) continue;
-
-        // Filter out post/comment entries
-        const firstUser = (msgs[1] || {}).content || '';
-        if (firstUser.includes('--- POST ---') || firstUser.includes('--- NEW MEMBER ---')) continue;
-
-        // Last message must be assistant (Scott's reply)
-        const lastMsg = msgs[msgs.length - 1];
-        if (lastMsg.role !== 'assistant') continue;
-
-        // Extract lead name
-        const leadName = extractLeadName(msgs) || 'Lead';
-
-        // Build conversation history (everything except system + last assistant)
-        const history = [];
-        for (let i = 1; i < msgs.length - 1; i++) {
-            history.push({ role: msgs[i].role, text: msgs[i].content });
+            return null;
         }
 
-        const scottReply = lastMsg.content || '';
-        // Key for matching with pre-labels (same logic as prelabel_dms.js)
-        const key = scottReply.substring(0, 80).trim().replace(/\s+/g, ' ');
+        // ─── PARSE JSONL ──────────────────────────────────────────────────────────────
+        function parseJSONL(text) {
+            const lines = text.trim().split('\n');
+            const rawUnits = [];
 
-        rawUnits.push({
-            convKey:    msgs[1].content.substring(0, 60),
-            key,
-            leadName,
-            history,
-            scottReply,
-            tags: {
-                dm_stage:    '',
-                nonsales:    false,
-                tone_tags:   [],
-                intent:      '',
-                sales_stage: '',
-            },
-            aiSuggested: false,
-            corrected: false,
-            skipped: false,
-        });
-    }
-    return rawUnits;
-}
+            for (const line of lines) {
+                let d;
+                try {
+                    d = JSON.parse(line.trim());
+                } catch (e) {
+                    continue;
+                }
 
-// ─── LOAD FROM SERVER ─────────────────────────────────────────────────────────
-async function loadFromServer() {
-    try {
-        $('loadStatus').textContent = 'Loading DMs from server…';
+                const msgs = d.messages || [];
+                if (msgs.length < 3) continue;
 
-        // Fetch DMs and pre-labels in parallel
-        const [dmsResp, plResp] = await Promise.all([
-            fetch('/api/dms'),
-            fetch('/api/prelabels'),
-        ]);
+                // Filter out post/comment entries
+                const firstUser = (msgs[1] || {}).content || '';
+                if (firstUser.includes('--- POST ---') || firstUser.includes('--- NEW MEMBER ---')) continue;
 
-        if (!dmsResp.ok) throw new Error(`Server error ${dmsResp.status}: ${await dmsResp.text()}`);
-        const { entries: rawEntries } = await dmsResp.json();
+                // Last message must be assistant (Scott's reply)
+                const lastMsg = msgs[msgs.length - 1];
+                if (lastMsg.role !== 'assistant') continue;
 
-        if (!rawEntries || rawEntries.length === 0) {
-            throw new Error('No DM entries found in finetune_data_v5.jsonl');
+                // Extract lead name
+                const leadName = extractLeadName(msgs) || 'Lead';
+
+                // Build conversation history (everything except system + last assistant)
+                const history = [];
+                for (let i = 1; i < msgs.length - 1; i++) {
+                    history.push({
+                        role: msgs[i].role,
+                        text: msgs[i].content
+                    });
+                }
+
+                const scottReply = lastMsg.content || '';
+                // Key for matching with pre-labels (same logic as prelabel_dms.js)
+                const key = scottReply.substring(0, 80).trim().replace(/\s+/g, ' ');
+
+                rawUnits.push({
+                    convKey: msgs[1].content.substring(0, 60),
+                    key,
+                    leadName,
+                    history,
+                    scottReply,
+                    tags: {
+                        dm_stage: '',
+                        nonsales: false,
+                        tone_tags: [],
+                        intent: '',
+                        sales_stage: '',
+                    },
+                    aiSuggested: false,
+                    corrected: false,
+                    skipped: false,
+                });
+            }
+            return rawUnits;
         }
 
-        // Load pre-labels if available
-        if (plResp.ok) {
-            const plData = await plResp.json();
-            if (plData.exists && plData.labels) {
-                preLabels = plData.labels;
-                const count = plData.labeled || Object.keys(preLabels).length;
-                console.log(`[pre-labels] loaded ${count} labels from server (model: ${plData.model || '?'})`);
+        // ─── LOAD FROM SERVER ─────────────────────────────────────────────────────────
+        async function loadFromServer() {
+            try {
+                $('loadStatus').textContent = 'Loading DMs from server…';
+
+                // Fetch DMs and pre-labels in parallel
+                const [dmsResp, plResp] = await Promise.all([
+                    fetch('/api/dms'),
+                    fetch('/api/prelabels'),
+                ]);
+
+                if (!dmsResp.ok) throw new Error(`Server error ${dmsResp.status}: ${await dmsResp.text()}`);
+                const {
+                    entries: rawEntries
+                } = await dmsResp.json();
+
+                if (!rawEntries || rawEntries.length === 0) {
+                    throw new Error('No DM entries found in finetune_data_v5.jsonl');
+                }
+
+                // Load pre-labels if available
+                if (plResp.ok) {
+                    const plData = await plResp.json();
+                    if (plData.exists && plData.labels) {
+                        preLabels = plData.labels;
+                        const count = plData.labeled || Object.keys(preLabels).length;
+                        console.log(`[pre-labels] loaded ${count} labels from server (model: ${plData.model || '?'})`);
+                    }
+                }
+
+                // Parse the raw messages objects into the tagger's internal format
+                const rawUnits = [];
+                for (const d of rawEntries) {
+                    const msgs = d.messages || [];
+                    const lastMsg = msgs[msgs.length - 1];
+                    const leadName = extractLeadName(msgs) || 'Lead';
+                    const history = [];
+                    for (let i = 1; i < msgs.length - 1; i++) {
+                        history.push({
+                            role: msgs[i].role,
+                            text: msgs[i].content
+                        });
+                    }
+                    const scottReply = lastMsg.content || '';
+                    const key = scottReply.substring(0, 80).trim().replace(/\s+/g, ' ');
+                    rawUnits.push({
+                        convKey: msgs[1].content.substring(0, 60),
+                        key,
+                        leadName,
+                        history,
+                        scottReply,
+                        tags: {
+                            dm_stage: '',
+                            nonsales: false,
+                            tone_tags: [],
+                            intent: '',
+                            sales_stage: ''
+                        },
+                        aiSuggested: false,
+                        corrected: false,
+                        skipped: false,
+                    });
+                }
+
+                // Interleave by conversation for variety
+                const groups = {};
+                for (const u of rawUnits) {
+                    if (!groups[u.convKey]) groups[u.convKey] = [];
+                    groups[u.convKey].push(u);
+                }
+                const keys = shuffled(Object.keys(groups));
+                for (const k of keys) fisherYates(groups[k]);
+                const result = [];
+                const ptrs = {};
+                for (const k of keys) ptrs[k] = 0;
+                let added = true;
+                while (added) {
+                    added = false;
+                    for (const k of keys) {
+                        if (ptrs[k] < groups[k].length) {
+                            result.push(groups[k][ptrs[k]++]);
+                            added = true;
+                        }
+                    }
+                }
+
+                pendingData = result;
+
+                const plCount = Object.keys(preLabels).length;
+                $('loadStatus').textContent = plCount > 0 ?
+                    `${result.length} DMs loaded · ${plCount} AI pre-labels ready. Starting…` :
+                    `${result.length} DMs loaded. Starting…`;
+
+                startTagging();
+
+            } catch (err) {
+                console.error('Load error:', err);
+                $('loadStatus').textContent = 'Failed to load from server.';
+                const errEl = $('loadError');
+                errEl.style.display = 'block';
+                errEl.textContent = err.message;
             }
         }
 
-        // Parse the raw messages objects into the tagger's internal format
-        const rawUnits = [];
-        for (const d of rawEntries) {
-            const msgs = d.messages || [];
-            const lastMsg = msgs[msgs.length - 1];
-            const leadName = extractLeadName(msgs) || 'Lead';
-            const history = [];
-            for (let i = 1; i < msgs.length - 1; i++) {
-                history.push({ role: msgs[i].role, text: msgs[i].content });
+        // ─── LOAD PRE-LABELS (kept for compatibility / optional future use) ───────────
+        function loadPreLabels(text) {
+            let data;
+            try {
+                data = JSON.parse(text);
+            } catch (e) {
+                alert('Could not parse dm_prelabeled.json: ' + e.message);
+                return;
             }
-            const scottReply = lastMsg.content || '';
-            const key = scottReply.substring(0, 80).trim().replace(/\s+/g, ' ');
-            rawUnits.push({
-                convKey:    msgs[1].content.substring(0, 60),
-                key,
-                leadName,
-                history,
-                scottReply,
-                tags: { dm_stage: '', nonsales: false, tone_tags: [], intent: '', sales_stage: '' },
-                aiSuggested: false,
-                corrected: false,
-                skipped: false,
-            });
+
+            preLabels = data.labels || {};
+            const count = Object.keys(preLabels).length;
+
+            // (no modal UI to update in server mode — labels will be applied at startTagging)
+            console.log(`AI pre-labels loaded: ${count} entries`);
         }
 
-        // Interleave by conversation for variety
-        const groups = {};
-        for (const u of rawUnits) {
-            if (!groups[u.convKey]) groups[u.convKey] = [];
-            groups[u.convKey].push(u);
+        // ─── START TAGGING ────────────────────────────────────────────────────────────
+        function startTagging() {
+            if (!pendingData) return;
+
+            entries = pendingData;
+
+            // Apply pre-labels if any
+            if (Object.keys(preLabels).length > 0) {
+                let matched = 0;
+                for (const entry of entries) {
+                    const label = preLabels[entry.key];
+                    if (!label) continue;
+                    entry.tags.nonsales = !!label.nonsales;
+                    entry.tags.dm_stage = label.nonsales ? null : (label.dm_stage || '');
+                    entry.tags.tone_tags = Array.isArray(label.tone_tags) ? label.tone_tags : [];
+                    entry.tags.intent = label.intent || '';
+                    entry.tags.sales_stage = label.sales_stage || '';
+                    entry.aiSuggested = true;
+                    matched++;
+                }
+                console.log(`Applied pre-labels to ${matched}/${entries.length} entries`);
+            }
+
+            // Snapshot every entry's tags NOW (after pre-labels applied) so corrections
+            // only fire when Scott actually changes something vs the AI suggestion.
+            for (let i = 0; i < entries.length; i++) {
+                entrySnapshots[i] = cloneTags(entries[i].tags);
+            }
+
+            currentIndex = 0;
+            $('loadModal').style.display = 'none';
+            $('app').classList.add('active');
+            render();
         }
-        const keys = shuffled(Object.keys(groups));
-        for (const k of keys) fisherYates(groups[k]);
-        const result = [];
-        const ptrs = {};
-        for (const k of keys) ptrs[k] = 0;
-        let added = true;
-        while (added) {
-            added = false;
-            for (const k of keys) {
-                if (ptrs[k] < groups[k].length) { result.push(groups[k][ptrs[k]++]); added = true; }
+
+        function fisherYates(arr) {
+            for (let i = arr.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [arr[i], arr[j]] = [arr[j], arr[i]];
             }
         }
 
-        pendingData = result;
-
-        const plCount = Object.keys(preLabels).length;
-        $('loadStatus').textContent = plCount > 0
-            ? `${result.length} DMs loaded · ${plCount} AI pre-labels ready. Starting…`
-            : `${result.length} DMs loaded. Starting…`;
-
-        startTagging();
-
-    } catch (err) {
-        console.error('Load error:', err);
-        $('loadStatus').textContent = 'Failed to load from server.';
-        const errEl = $('loadError');
-        errEl.style.display = 'block';
-        errEl.textContent = err.message;
-    }
-}
-
-// ─── LOAD PRE-LABELS (kept for compatibility / optional future use) ───────────
-function loadPreLabels(text) {
-    let data;
-    try { data = JSON.parse(text); } catch (e) {
-        alert('Could not parse dm_prelabeled.json: ' + e.message);
-        return;
-    }
-
-    preLabels = data.labels || {};
-    const count = Object.keys(preLabels).length;
-
-    // (no modal UI to update in server mode — labels will be applied at startTagging)
-    console.log(`AI pre-labels loaded: ${count} entries`);
-}
-
-// ─── START TAGGING ────────────────────────────────────────────────────────────
-function startTagging() {
-    if (!pendingData) return;
-
-    entries = pendingData;
-
-    // Apply pre-labels if any
-    if (Object.keys(preLabels).length > 0) {
-        let matched = 0;
-        for (const entry of entries) {
-            const label = preLabels[entry.key];
-            if (!label) continue;
-            entry.tags.nonsales    = !!label.nonsales;
-            entry.tags.dm_stage    = label.nonsales ? null : (label.dm_stage || '');
-            entry.tags.tone_tags   = Array.isArray(label.tone_tags) ? label.tone_tags : [];
-            entry.tags.intent      = label.intent      || '';
-            entry.tags.sales_stage = label.sales_stage || '';
-            entry.aiSuggested      = true;
-            matched++;
+        function shuffled(arr) {
+            const a = [...arr];
+            fisherYates(a);
+            return a;
         }
-        console.log(`Applied pre-labels to ${matched}/${entries.length} entries`);
-    }
 
-    // Snapshot every entry's tags NOW (after pre-labels applied) so corrections
-    // only fire when Scott actually changes something vs the AI suggestion.
-    for (let i = 0; i < entries.length; i++) {
-        entrySnapshots[i] = cloneTags(entries[i].tags);
-    }
+        // ─── CORRECTION TRACKING ──────────────────────────────────────────────────────
 
-    currentIndex = 0;
-    $('loadModal').style.display = 'none';
-    $('app').classList.add('active');
-    render();
-}
+        function cloneTags(tags) {
+            return {
+                dm_stage: tags.dm_stage,
+                nonsales: tags.nonsales,
+                tone_tags: [...(tags.tone_tags || [])],
+                intent: tags.intent,
+                sales_stage: tags.sales_stage,
+            };
+        }
 
-function fisherYates(arr) {
-    for (let i = arr.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [arr[i], arr[j]] = [arr[j], arr[i]];
-    }
-}
-function shuffled(arr) { const a = [...arr]; fisherYates(a); return a; }
+        function tagsEqual(a, b) {
+            if (!a || !b) return false;
+            if (a.dm_stage !== b.dm_stage) return false;
+            if (a.nonsales !== b.nonsales) return false;
+            if (a.intent !== b.intent) return false;
+            if (a.sales_stage !== b.sales_stage) return false;
+            const ta = [...(a.tone_tags || [])].sort();
+            const tb = [...(b.tone_tags || [])].sort();
+            if (ta.length !== tb.length) return false;
+            for (let i = 0; i < ta.length; i++)
+                if (ta[i] !== tb[i]) return false;
+            return true;
+        }
 
-// ─── CORRECTION TRACKING ──────────────────────────────────────────────────────
+        // Build a stable unique ID for each entry (based on scottReply key + history length)
+        function entryId(index) {
+            const e = entries[index];
+            return `${index}__${e.key.substring(0, 40).replace(/\W+/g, '_')}`;
+        }
 
-function cloneTags(tags) {
-    return {
-        dm_stage:    tags.dm_stage,
-        nonsales:    tags.nonsales,
-        tone_tags:   [...(tags.tone_tags || [])],
-        intent:      tags.intent,
-        sales_stage: tags.sales_stage,
-    };
-}
+        // Called once when an entry is first rendered — records baseline tags
+        function snapshotIfNew(index) {
+            if (entrySnapshots[index] === undefined) {
+                entrySnapshots[index] = cloneTags(entries[index].tags);
+            }
+        }
 
-function tagsEqual(a, b) {
-    if (!a || !b) return false;
-    if (a.dm_stage !== b.dm_stage) return false;
-    if (a.nonsales !== b.nonsales) return false;
-    if (a.intent !== b.intent) return false;
-    if (a.sales_stage !== b.sales_stage) return false;
-    const ta = [...(a.tone_tags || [])].sort();
-    const tb = [...(b.tone_tags || [])].sort();
-    if (ta.length !== tb.length) return false;
-    for (let i = 0; i < ta.length; i++) if (ta[i] !== tb[i]) return false;
-    return true;
-}
+        // Called after every tag mutation — sends correction to server if tags changed vs snapshot
+        async function trackCorrection(index) {
+            const entry = entries[index];
+            const snapshot = entrySnapshots[index];
+            const current = entry.tags;
 
-// Build a stable unique ID for each entry (based on scottReply key + history length)
-function entryId(index) {
-    const e = entries[index];
-    return `${index}__${e.key.substring(0, 40).replace(/\W+/g, '_')}`;
-}
+            // Only track if there was a meaningful previous state (AI pre-labeled or user had interacted before)
+            if (!snapshot) return;
+            if (tagsEqual(snapshot, current)) return; // nothing changed yet
 
-// Called once when an entry is first rendered — records baseline tags
-function snapshotIfNew(index) {
-    if (entrySnapshots[index] === undefined) {
-        entrySnapshots[index] = cloneTags(entries[index].tags);
-    }
-}
-
-// Called after every tag mutation — sends correction to server if tags changed vs snapshot
-async function trackCorrection(index) {
-    const entry    = entries[index];
-    const snapshot = entrySnapshots[index];
-    const current  = entry.tags;
-
-    // Only track if there was a meaningful previous state (AI pre-labeled or user had interacted before)
-    if (!snapshot) return;
-    if (tagsEqual(snapshot, current)) return;  // nothing changed yet
-
-    // Optimistically mark as corrected so the nav dot updates immediately
-    entries[index].corrected = true;
-    refreshNavDots();
-
-    const correctionId = entryId(index);
-
-    // Build last-10-messages context (history messages before the reply being tagged)
-    const allMsgs = entry.history || [];
-    const last10  = allMsgs.slice(-10).map(m => ({ role: m.role, text: m.text }));
-
-    const correction = {
-        correction_id:    correctionId,
-        timestamp:        new Date().toISOString(),
-        lead_name:        entry.leadName,
-        scott_reply:      entry.scottReply,
-        last_10_messages: last10,
-        previous_tags:    snapshot,
-        new_tags: {
-            dm_stage:    current.nonsales ? null : current.dm_stage,
-            nonsales:    current.nonsales,
-            tone_tags:   [...(current.tone_tags || [])],
-            intent:      current.intent,
-            sales_stage: current.sales_stage,
-        },
-    };
-
-    try {
-        const resp = await fetch('/api/corrections', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(correction),
-        });
-        if (resp.ok) {
-            const data = await resp.json();
-            console.log(`[corrections] updated ${data.updated_lines} JSONL line(s) · ${data.total_corrections} total corrections logged`);
-            // Mark entry as manually corrected and update nav dots immediately
+            // Optimistically mark as corrected so the nav dot updates immediately
             entries[index].corrected = true;
-            // Update snapshot to the current state so next change is diffed from here
-            entrySnapshots[index] = cloneTags(current);
-            // Refresh nav dots to reflect corrected state without full re-render
             refreshNavDots();
-        } else {
-            const err = await resp.json().catch(() => ({}));
-            console.warn(`[corrections] server error ${resp.status}:`, err.error || resp.statusText);
+
+            const correctionId = entryId(index);
+
+            // Build last-10-messages context (history messages before the reply being tagged)
+            const allMsgs = entry.history || [];
+            const last10 = allMsgs.slice(-10).map(m => ({
+                role: m.role,
+                text: m.text
+            }));
+
+            const correction = {
+                correction_id: correctionId,
+                timestamp: new Date().toISOString(),
+                lead_name: entry.leadName,
+                scott_reply: entry.scottReply,
+                last_10_messages: last10,
+                previous_tags: snapshot,
+                new_tags: {
+                    dm_stage: current.nonsales ? null : current.dm_stage,
+                    nonsales: current.nonsales,
+                    tone_tags: [...(current.tone_tags || [])],
+                    intent: current.intent,
+                    sales_stage: current.sales_stage,
+                },
+            };
+
+            try {
+                const resp = await fetch('/api/corrections', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(correction),
+                });
+                if (resp.ok) {
+                    const data = await resp.json();
+                    console.log(`[corrections] updated ${data.updated_lines} JSONL line(s) · ${data.total_corrections} total corrections logged`);
+                    // Mark entry as manually corrected and update nav dots immediately
+                    entries[index].corrected = true;
+                    // Update snapshot to the current state so next change is diffed from here
+                    entrySnapshots[index] = cloneTags(current);
+                    // Refresh nav dots to reflect corrected state without full re-render
+                    refreshNavDots();
+                } else {
+                    const err = await resp.json().catch(() => ({}));
+                    console.warn(`[corrections] server error ${resp.status}:`, err.error || resp.statusText);
+                }
+            } catch (err) {
+                console.warn('[corrections] failed to reach server:', err.message);
+            }
         }
-    } catch (err) {
-        console.warn('[corrections] failed to reach server:', err.message);
-    }
-}
 
-// ─── NAV DOT REFRESH (lightweight — just rebuilds dots, no full re-render) ────
-function refreshNavDots() {
-    const dots   = $('navDots');
-    dots.innerHTML = '';
-    const maxDots = Math.min(entries.length, 200);
-    for (let i = 0; i < maxDots; i++) {
-        const e  = entries[i];
-        const t  = e.tags;
-        const ok = t.nonsales || (t.dm_stage && t.dm_stage !== '');
-        const isTagged = ok && t.tone_tags.length > 0 && t.intent && t.sales_stage;
-        const btn = document.createElement('button');
-        btn.className = 'nav-dot'
-            + (i === currentIndex ? ' active'    : '')
-            + (e.corrected        ? ' corrected' : (isTagged ? ' tagged' : (e.aiSuggested ? ' ai-pre' : '')))
-            + (e.skipped          ? ' skipped'   : '');
-        btn.title = e.corrected ? 'Manually corrected' : (isTagged ? 'Fully tagged' : (e.aiSuggested ? 'AI pre-labeled' : ''));
-        btn.textContent = i + 1;
-        btn.onclick = () => { currentIndex = i; render(); };
-        dots.appendChild(btn);
-    }
-    if (entries.length > maxDots) {
-        const span = document.createElement('span');
-        span.style.cssText = 'font-size:10px;color:#333;padding:0 4px;line-height:22px;';
-        span.textContent   = `+${entries.length - maxDots} more`;
-        dots.appendChild(span);
-    }
-}
+        // ─── NAV DOT REFRESH (lightweight — just rebuilds dots, no full re-render) ────
+        function refreshNavDots() {
+            const dots = $('navDots');
+            dots.innerHTML = '';
+            const maxDots = Math.min(entries.length, 200);
+            for (let i = 0; i < maxDots; i++) {
+                const e = entries[i];
+                const t = e.tags;
+                const ok = t.nonsales || (t.dm_stage && t.dm_stage !== '');
+                const isTagged = ok && t.tone_tags.length > 0 && t.intent && t.sales_stage;
+                const btn = document.createElement('button');
+                btn.className = 'nav-dot' +
+                    (i === currentIndex ? ' active' : '') +
+                    (e.corrected ? ' corrected' : (isTagged ? ' tagged' : (e.aiSuggested ? ' ai-pre' : ''))) +
+                    (e.skipped ? ' skipped' : '');
+                btn.title = e.corrected ? 'Manually corrected' : (isTagged ? 'Fully tagged' : (e.aiSuggested ? 'AI pre-labeled' : ''));
+                btn.textContent = i + 1;
+                btn.onclick = () => {
+                    currentIndex = i;
+                    render();
+                };
+                dots.appendChild(btn);
+            }
+            if (entries.length > maxDots) {
+                const span = document.createElement('span');
+                span.style.cssText = 'font-size:10px;color:#333;padding:0 4px;line-height:22px;';
+                span.textContent = `+${entries.length - maxDots} more`;
+                dots.appendChild(span);
+            }
+        }
 
-// ─── RENDER ───────────────────────────────────────────────────────────────────
-function render() {
-    const entry = entries[currentIndex];
-    const tags  = entry.tags;
+        // ─── RENDER ───────────────────────────────────────────────────────────────────
+        function render() {
+            const entry = entries[currentIndex];
+            const tags = entry.tags;
 
-    $('entryIndex').textContent = `entry ${currentIndex + 1} of ${entries.length}`;
+            $('entryIndex').textContent = `entry ${currentIndex + 1} of ${entries.length}`;
 
-    // ── Lead name chip ──
-    const chip = $('leadNameChip');
-    if (entry.leadName && entry.leadName !== 'Lead') {
-        chip.textContent = '👤 ' + entry.leadName;
-        chip.style.display = 'inline';
-    } else {
-        chip.style.display = 'none';
-    }
+            // ── Lead name chip ──
+            const chip = $('leadNameChip');
+            if (entry.leadName && entry.leadName !== 'Lead') {
+                chip.textContent = '👤 ' + entry.leadName;
+                chip.style.display = 'inline';
+            } else {
+                chip.style.display = 'none';
+            }
 
-    // ── Chat bubbles ──
-    const scroll = $('chatScroll');
-    scroll.innerHTML = '';
+            // ── Chat bubbles ──
+            const scroll = $('chatScroll');
+            scroll.innerHTML = '';
 
-    entry.history.forEach(msg => {
-        const isScott    = msg.role === 'assistant';
-        const speakerName = isScott ? 'Scott' : entry.leadName;
-        const row = makeBubble(speakerName, msg.text, isScott, false);
-        scroll.appendChild(row);
-    });
+            entry.history.forEach(msg => {
+                const isScott = msg.role === 'assistant';
+                const speakerName = isScott ? 'Scott' : entry.leadName;
+                const row = makeBubble(speakerName, msg.text, isScott, false);
+                scroll.appendChild(row);
+            });
 
-    const div = document.createElement('div');
-    div.className   = 'divider';
-    div.textContent = '▼  LABELING THIS REPLY  ▼';
-    scroll.appendChild(div);
+            const div = document.createElement('div');
+            div.className = 'divider';
+            div.textContent = '▼  LABELING THIS REPLY  ▼';
+            scroll.appendChild(div);
 
-    scroll.appendChild(makeBubble('Scott', entry.scottReply, true, true));
-    setTimeout(() => { scroll.scrollTop = scroll.scrollHeight; }, 0);
+            scroll.appendChild(makeBubble('Scott', entry.scottReply, true, true));
+            setTimeout(() => {
+                scroll.scrollTop = scroll.scrollHeight;
+            }, 0);
 
-    // ── AI badge + corrected badge ──
-    const badge = $('aiBadge');
-    badge.style.display = (entry.aiSuggested && !entry.corrected) ? 'inline' : 'none';
-    const corrBadge = $('correctedBadge');
-    corrBadge.style.display = entry.corrected ? 'inline' : 'none';
+            // ── AI badge + corrected badge ──
+            const badge = $('aiBadge');
+            badge.style.display = (entry.aiSuggested && !entry.corrected) ? 'inline' : 'none';
+            const corrBadge = $('correctedBadge');
+            corrBadge.style.display = entry.corrected ? 'inline' : 'none';
 
-    // ── Non-sales toggle ──
-    const nsRow = $('nonsalesToggle');
-    const nsBox = $('nonsalesBox');
-    nsRow.className = 'nonsales-row' + (tags.nonsales ? ' active' : '');
-    nsBox.textContent = tags.nonsales ? '✓' : '';
-    nsRow.onclick = () => {
-        tags.nonsales = !tags.nonsales;
-        if (tags.nonsales) tags.dm_stage = null;
-        else tags.dm_stage = (tags.dm_stage === null) ? '' : tags.dm_stage;
-        entry.aiSuggested = false;
-        trackCorrection(currentIndex);
-        render();
-    };
+            // ── Non-sales toggle ──
+            const nsRow = $('nonsalesToggle');
+            const nsBox = $('nonsalesBox');
+            nsRow.className = 'nonsales-row' + (tags.nonsales ? ' active' : '');
+            nsBox.textContent = tags.nonsales ? '✓' : '';
+            nsRow.onclick = () => {
+                tags.nonsales = !tags.nonsales;
+                if (tags.nonsales) tags.dm_stage = null;
+                else tags.dm_stage = (tags.dm_stage === null) ? '' : tags.dm_stage;
+                entry.aiSuggested = false;
+                trackCorrection(currentIndex);
+                render();
+            };
 
-    // ── DM Workflow stages ──
-    const stageC = $('stageContainer');
-    stageC.innerHTML = '';
-    stageC.className = 'dm-stages' + (tags.nonsales ? ' disabled' : '');
-    DM_STAGES.forEach(s => {
-        const active = !tags.nonsales && tags.dm_stage === s.value;
-        const btn    = document.createElement('button');
-        btn.className = `dm-stage-btn ${s.cls}${active ? ' active' : ''}`;
-        btn.innerHTML = `
+            // ── DM Workflow stages ──
+            const stageC = $('stageContainer');
+            stageC.innerHTML = '';
+            stageC.className = 'dm-stages' + (tags.nonsales ? ' disabled' : '');
+            DM_STAGES.forEach(s => {
+                const active = !tags.nonsales && tags.dm_stage === s.value;
+                const btn = document.createElement('button');
+                btn.className = `dm-stage-btn ${s.cls}${active ? ' active' : ''}`;
+                btn.innerHTML = `
             <div class="dm-stage-num">${s.num}</div>
             <div class="dm-stage-text">
                 <div class="dm-stage-title">${s.title}</div>
                 <div class="dm-stage-desc">${s.desc}</div>
             </div>`;
-        btn.onclick = () => { tags.dm_stage = s.value; entry.aiSuggested = false; trackCorrection(currentIndex); render(); };
-        stageC.appendChild(btn);
-    });
+                btn.onclick = () => {
+                    tags.dm_stage = s.value;
+                    entry.aiSuggested = false;
+                    trackCorrection(currentIndex);
+                    render();
+                };
+                stageC.appendChild(btn);
+            });
 
-    // ── Tone pills ──
-    const toneC = $('toneContainer');
-    toneC.innerHTML = '';
-    TONE_OPTIONS.forEach(opt => {
-        const active = (tags.tone_tags || []).includes(opt.value);
-        const btn    = document.createElement('button');
-        btn.className    = 'tone-pill';
-        btn.style.border = `1.5px solid ${active ? opt.color : '#2a2a32'}`;
-        btn.style.background = active ? opt.color + '18' : 'transparent';
-        btn.style.color  = active ? opt.color : '#777';
-        btn.textContent  = (active ? '✓ ' : '') + opt.label;
-        btn.onclick = () => {
-            const idx = tags.tone_tags.indexOf(opt.value);
-            if (idx === -1) tags.tone_tags.push(opt.value);
-            else tags.tone_tags.splice(idx, 1);
-            entry.aiSuggested = false;
-            trackCorrection(currentIndex);
-            render();
-        };
-        toneC.appendChild(btn);
-    });
+            // ── Tone pills ──
+            const toneC = $('toneContainer');
+            toneC.innerHTML = '';
+            TONE_OPTIONS.forEach(opt => {
+                const active = (tags.tone_tags || []).includes(opt.value);
+                const btn = document.createElement('button');
+                btn.className = 'tone-pill';
+                btn.style.border = `1.5px solid ${active ? opt.color : '#2a2a32'}`;
+                btn.style.background = active ? opt.color + '18' : 'transparent';
+                btn.style.color = active ? opt.color : '#777';
+                btn.textContent = (active ? '✓ ' : '') + opt.label;
+                btn.onclick = () => {
+                    const idx = tags.tone_tags.indexOf(opt.value);
+                    if (idx === -1) tags.tone_tags.push(opt.value);
+                    else tags.tone_tags.splice(idx, 1);
+                    entry.aiSuggested = false;
+                    trackCorrection(currentIndex);
+                    render();
+                };
+                toneC.appendChild(btn);
+            });
 
-    // ── Intent ──
-    const intC = $('intentContainer');
-    intC.innerHTML = '';
-    INTENT_OPTIONS.forEach(opt => {
-        const active = tags.intent === opt.value;
-        const btn    = document.createElement('button');
-        btn.className = 'intent-card' + (active ? ' active' : '');
-        btn.innerHTML = `<span class="label">${opt.label}</span><span class="desc">${opt.desc}</span>`;
-        btn.onclick = () => { tags.intent = opt.value; entry.aiSuggested = false; trackCorrection(currentIndex); render(); };
-        intC.appendChild(btn);
-    });
+            // ── Intent ──
+            const intC = $('intentContainer');
+            intC.innerHTML = '';
+            INTENT_OPTIONS.forEach(opt => {
+                const active = tags.intent === opt.value;
+                const btn = document.createElement('button');
+                btn.className = 'intent-card' + (active ? ' active' : '');
+                btn.innerHTML = `<span class="label">${opt.label}</span><span class="desc">${opt.desc}</span>`;
+                btn.onclick = () => {
+                    tags.intent = opt.value;
+                    entry.aiSuggested = false;
+                    trackCorrection(currentIndex);
+                    render();
+                };
+                intC.appendChild(btn);
+            });
 
-    // ── Sales Stage ──
-    const ssC = $('salesStageContainer');
-    ssC.innerHTML = '';
-    SALES_STAGES.forEach(s => {
-        const active = tags.sales_stage === s.value;
-        const btn    = document.createElement('button');
-        btn.className = 'stage-btn' + (active ? ' active' : '');
-        btn.innerHTML = `<span class="icon">${s.icon}</span><span>${s.label}</span>`;
-        btn.onclick = () => { tags.sales_stage = s.value; entry.aiSuggested = false; trackCorrection(currentIndex); render(); };
-        ssC.appendChild(btn);
-    });
+            // ── Sales Stage ──
+            const ssC = $('salesStageContainer');
+            ssC.innerHTML = '';
+            SALES_STAGES.forEach(s => {
+                const active = tags.sales_stage === s.value;
+                const btn = document.createElement('button');
+                btn.className = 'stage-btn' + (active ? ' active' : '');
+                btn.innerHTML = `<span class="icon">${s.icon}</span><span>${s.label}</span>`;
+                btn.onclick = () => {
+                    tags.sales_stage = s.value;
+                    entry.aiSuggested = false;
+                    trackCorrection(currentIndex);
+                    render();
+                };
+                ssC.appendChild(btn);
+            });
 
-    // ── Status ──
-    const dmOk    = tags.nonsales || (tags.dm_stage && tags.dm_stage !== '');
-    const complete = dmOk && tags.tone_tags.length > 0 && tags.intent && tags.sales_stage;
-    const statusEl = $('statusBadge');
-    statusEl.className   = 'status ' + (complete ? 'complete' : 'incomplete');
-    statusEl.textContent  = complete
-        ? '✓ Fully tagged'
-        : '◯ ' + [
-            !dmOk                       && 'workflow stage',
-            !tags.tone_tags.length      && 'tone',
-            !tags.intent                && 'intent',
-            !tags.sales_stage           && 'sales stage',
-          ].filter(Boolean).join(', ') + ' missing';
+            // ── Status ──
+            const dmOk = tags.nonsales || (tags.dm_stage && tags.dm_stage !== '');
+            const complete = dmOk && tags.tone_tags.length > 0 && tags.intent && tags.sales_stage;
+            const statusEl = $('statusBadge');
+            statusEl.className = 'status ' + (complete ? 'complete' : 'incomplete');
+            statusEl.textContent = complete ?
+                '✓ Fully tagged' :
+                '◯ ' + [!dmOk && 'workflow stage', !tags.tone_tags.length && 'tone', !tags.intent && 'intent', !tags.sales_stage && 'sales stage', ].filter(Boolean).join(', ') + ' missing';
 
-    // ── Nav dots ──
-    refreshNavDots();
+            // ── Nav dots ──
+            refreshNavDots();
 
-    // ── Progress ──
-    const total  = entries.length;
-    const nTagged = entries.filter(e => {
-        const t    = e.tags;
-        const ok   = t.nonsales || (t.dm_stage && t.dm_stage !== '');
-        return ok && t.tone_tags.length > 0 && t.intent && t.sales_stage;
-    }).length;
-    const pct = Math.round((nTagged / total) * 100);
-    $('progressText').textContent = `${nTagged}/${total} tagged · ${pct}% complete`;
-    $('progressBar').style.width  = pct + '%';
+            // ── Progress ──
+            const total = entries.length;
+            const nTagged = entries.filter(e => {
+                const t = e.tags;
+                const ok = t.nonsales || (t.dm_stage && t.dm_stage !== '');
+                return ok && t.tone_tags.length > 0 && t.intent && t.sales_stage;
+            }).length;
+            const pct = Math.round((nTagged / total) * 100);
+            $('progressText').textContent = `${nTagged}/${total} tagged · ${pct}% complete`;
+            $('progressBar').style.width = pct + '%';
 
-    // ── Nav buttons ──
-    $('prevBtn').disabled = currentIndex === 0;
-    $('nextBtn').disabled = currentIndex === entries.length - 1;
-    $('navInfo').textContent = `${currentIndex + 1} / ${entries.length} · Arrow keys to navigate`;
-}
-
-function makeBubble(name, text, isScott, isTarget) {
-    const row     = document.createElement('div');
-    row.className = 'bubble-row ' + (isScott ? 'scott' : 'lead') + (isTarget ? ' target' : '');
-
-    const speaker = document.createElement('div');
-    speaker.className   = 'bubble-speaker';
-    speaker.textContent = name;
-    row.appendChild(speaker);
-
-    const bubble = document.createElement('div');
-    bubble.className   = 'bubble';
-    bubble.textContent = text;
-    row.appendChild(bubble);
-
-    return row;
-}
-
-// ─── NAVIGATION ───────────────────────────────────────────────────────────────
-$('prevBtn').addEventListener('click', () => { if (currentIndex > 0) { currentIndex--; render(); } });
-$('nextBtn').addEventListener('click', () => { if (currentIndex < entries.length - 1) { currentIndex++; render(); } });
-$('skipBtn').addEventListener('click', () => {
-    entries[currentIndex].skipped = true;
-    if (currentIndex < entries.length - 1) { currentIndex++; render(); }
-});
-document.addEventListener('keydown', e => {
-    if (!entries.length) return;
-    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
-        e.preventDefault();
-        if (currentIndex < entries.length - 1) { currentIndex++; render(); }
-    }
-    if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
-        e.preventDefault();
-        if (currentIndex > 0) { currentIndex--; render(); }
-    }
-});
-
-// ─── EXPORT ───────────────────────────────────────────────────────────────────
-$('exportBtn').addEventListener('click', () => {
-    const dmOkFn = t => t.nonsales || (t.dm_stage && t.dm_stage !== '');
-    const done   = entries.filter(e => {
-        const t = e.tags;
-        return dmOkFn(t) && t.tone_tags.length > 0 && t.intent && t.sales_stage;
-    });
-
-    const output = done.map(e => ({
-        lead_name:   e.leadName,
-        context:     e.history.map(m => ({ role: m.role, text: m.text })),
-        scott_reply: e.scottReply,
-        tags: {
-            dm_stage:    e.tags.nonsales ? null : e.tags.dm_stage,
-            tone_tags:   e.tags.tone_tags,
-            intent:      e.tags.intent,
-            sales_stage: e.tags.sales_stage,
+            // ── Nav buttons ──
+            $('prevBtn').disabled = currentIndex === 0;
+            $('nextBtn').disabled = currentIndex === entries.length - 1;
+            $('navInfo').textContent = `${currentIndex + 1} / ${entries.length} · Arrow keys to navigate`;
         }
-    }));
 
-    const blob = new Blob([JSON.stringify(output, null, 2)], { type: 'application/json' });
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement('a');
-    a.href = url; a.download = 'dm_labeled.json'; a.click();
-    URL.revokeObjectURL(url);
+        function makeBubble(name, text, isScott, isTarget) {
+            const row = document.createElement('div');
+            row.className = 'bubble-row ' + (isScott ? 'scott' : 'lead') + (isTarget ? ' target' : '');
 
-    const toast = $('toast');
-    toast.textContent = `✓ Exported ${done.length} tagged DMs`;
-    toast.classList.add('show');
-    setTimeout(() => toast.classList.remove('show'), 3000);
-});
+            const speaker = document.createElement('div');
+            speaker.className = 'bubble-speaker';
+            speaker.textContent = name;
+            row.appendChild(speaker);
 
-// ─── BOOT ─────────────────────────────────────────────────────────────────────
-// When served via the DM tagger server, load data automatically.
-// If opened as a plain file (no server), show a friendly message.
-(function boot() {
-    if (window.location.protocol === 'file:') {
-        $('loadStatus').textContent = 'Open via the server: run npm start in dm_tagger/ then visit http://localhost:3001';
-        $('loadError').style.display = 'block';
-        $('loadError').textContent   = 'Direct file:// access detected — server required to load JSONL data.';
-        return;
-    }
-    loadFromServer();
-})();
-</script>
+            const bubble = document.createElement('div');
+            bubble.className = 'bubble';
+            bubble.textContent = text;
+            row.appendChild(bubble);
+
+            return row;
+        }
+
+        // ─── NAVIGATION ───────────────────────────────────────────────────────────────
+        $('prevBtn').addEventListener('click', () => {
+            if (currentIndex > 0) {
+                currentIndex--;
+                render();
+            }
+        });
+        $('nextBtn').addEventListener('click', () => {
+            if (currentIndex < entries.length - 1) {
+                currentIndex++;
+                render();
+            }
+        });
+        $('skipBtn').addEventListener('click', () => {
+            entries[currentIndex].skipped = true;
+            if (currentIndex < entries.length - 1) {
+                currentIndex++;
+                render();
+            }
+        });
+        document.addEventListener('keydown', e => {
+            if (!entries.length) return;
+            if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+                e.preventDefault();
+                if (currentIndex < entries.length - 1) {
+                    currentIndex++;
+                    render();
+                }
+            }
+            if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+                e.preventDefault();
+                if (currentIndex > 0) {
+                    currentIndex--;
+                    render();
+                }
+            }
+        });
+
+        // ─── EXPORT ───────────────────────────────────────────────────────────────────
+        $('exportBtn').addEventListener('click', () => {
+            const dmOkFn = t => t.nonsales || (t.dm_stage && t.dm_stage !== '');
+            const done = entries.filter(e => {
+                const t = e.tags;
+                return dmOkFn(t) && t.tone_tags.length > 0 && t.intent && t.sales_stage;
+            });
+
+            const output = done.map(e => ({
+                lead_name: e.leadName,
+                context: e.history.map(m => ({
+                    role: m.role,
+                    text: m.text
+                })),
+                scott_reply: e.scottReply,
+                tags: {
+                    dm_stage: e.tags.nonsales ? null : e.tags.dm_stage,
+                    tone_tags: e.tags.tone_tags,
+                    intent: e.tags.intent,
+                    sales_stage: e.tags.sales_stage,
+                }
+            }));
+
+            const blob = new Blob([JSON.stringify(output, null, 2)], {
+                type: 'application/json'
+            });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'dm_labeled.json';
+            a.click();
+            URL.revokeObjectURL(url);
+
+            const toast = $('toast');
+            toast.textContent = `✓ Exported ${done.length} tagged DMs`;
+            toast.classList.add('show');
+            setTimeout(() => toast.classList.remove('show'), 3000);
+        });
+
+        // ─── BOOT ─────────────────────────────────────────────────────────────────────
+        // When served via the DM tagger server, load data automatically.
+        // If opened as a plain file (no server), show a friendly message.
+        (function boot() {
+            if (window.location.protocol === 'file:') {
+                $('loadStatus').textContent = 'Open via the server: run npm start in dm_tagger/ then visit http://localhost:3001';
+                $('loadError').style.display = 'block';
+                $('loadError').textContent = 'Direct file:// access detected — server required to load JSONL data.';
+                return;
+            }
+            loadFromServer();
+        })();
+    </script>
 </body>
+
 </html>

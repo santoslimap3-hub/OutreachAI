@@ -34,8 +34,8 @@ const path = require("path");
 const ROOT          = path.resolve(__dirname, "..");
 const DATA_DIR      = path.join(ROOT, "data");
 const STREAMS_FILE  = path.join(DATA_DIR, "person_streams.json");
-const OUT_JSONL     = path.join(DATA_DIR, "fine_tune", "finetune_data_v7.jsonl");
-const OUT_REPORT    = path.join(DATA_DIR, "fine_tune", "v7_build_report.json");
+const OUT_JSONL     = path.join(DATA_DIR, "fine_tune", "finetune_data_v9.jsonl");
+const OUT_REPORT    = path.join(DATA_DIR, "fine_tune", "v9_build_report.json");
 
 const BUBBLE_DELIM = "⟨BUBBLE⟩";
 
@@ -174,7 +174,7 @@ function renderUser(person, priorEvents, triggerTurn) {
 }
 
 function build() {
-    console.log("\n📝 Building finetune_data_v7.jsonl ...");
+    console.log("\n📝 Building finetune_data_v9.jsonl ...");
     if (!fs.existsSync(path.dirname(OUT_JSONL))) fs.mkdirSync(path.dirname(OUT_JSONL), { recursive: true });
 
     var doc = readJSON(STREAMS_FILE);
@@ -262,7 +262,7 @@ function build() {
     };
     fs.writeFileSync(OUT_REPORT, JSON.stringify(report, null, 2));
 
-    console.log("\n📊 v7 build summary");
+    console.log("\n📊 v9 build summary");
     console.log("   examples written:      " + examplesWritten);
     console.log("   per channel:           " + JSON.stringify(perChannel));
     console.log("   dropped company×co:    " + droppedCompany + " streams");

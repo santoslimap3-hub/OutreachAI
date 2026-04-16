@@ -413,19 +413,48 @@ async function extractFullThread(page, postUrl, indexCard) {
         }
 
         function getTimestamp(bubble) {
+            // 1. <time datetime="..."> — ideal, rarely populated by Skool
             var t = bubble.querySelector("time[datetime]");
             if (t && t.getAttribute("datetime")) return { absolute: t.getAttribute("datetime"), raw: t.textContent.trim() };
-            var cand = bubble.querySelectorAll("[title], [aria-label]");
-            for (var i = 0; i < cand.length; i++) {
-                var title = cand[i].getAttribute("title") || cand[i].getAttribute("aria-label") || "";
-                // "Fri, Feb 7, 2025 3:14 PM" style
-                if (/\d{4}/.test(title) && /(AM|PM|:)/.test(title)) {
-                    return { absolute: title, raw: (cand[i].textContent || "").trim() };
-                }
+
+            // 2. title / aria-label with a full datetime ("Fri, Feb 7, 2025 3:14 PM")
+            var cands = bubble.querySelectorAll("[title], [aria-label]");
+            for (var i = 0; i < cands.length; i++) {
+                var attr = cands[i].getAttribute("title") || cands[i].getAttribute("aria-label") || "";
+                if (/\d{4}/.test(attr) && /(AM|PM|:)/.test(attr)) return { absolute: attr, raw: attr };
             }
-            // raw "2d" / "Feb 12" fallback
-            var timeEl = bubble.querySelector('[class*="Time"], [class*="time"]');
-            return { absolute: null, raw: timeEl ? (timeEl.textContent || "").trim() : "" };
+
+            // 3. Dedicated time/date class element (strip leading dot/bullet)
+            var timeEl = bubble.querySelector(
+                '[class*="Time"], [class*="time"], [class*="Timestamp"], [class*="timestamp"], ' +
+                '[class*="PostedAt"], [class*="postedAt"], [class*="Date"], [class*="date"], ' +
+                '[class*="CreatedAt"], [class*="createdAt"], [class*="Age"], [class*="age"]'
+            );
+            if (timeEl) {
+                var raw3 = (timeEl.textContent || "").trim().replace(/^[·•\s]+/, "").trim();
+                if (raw3 && raw3.length < 30) return { absolute: null, raw: raw3 };
+            }
+
+            // 4. READ the first line of the bubble's visible text and extract the
+            //    part after the middle-dot separator.
+            //    Skool renders: "AuthorName · Mar '25" or "AuthorName · 44 mins" etc.
+            //    This is the primary path since Skool uses this format everywhere.
+            var firstLine = ((bubble.innerText || bubble.textContent || "").split("\n")[0] || "").trim();
+            // Look for · or • followed by the timestamp
+            var dotMatch = firstLine.match(/[·•]\s*(.{1,30})$/);
+            if (dotMatch) {
+                var candidate = dotMatch[1].trim();
+                // Validate it looks like a time expression (not random trailing text)
+                var looksLikeTime =
+                    /^\d+\s*(min|mins|m|h|hr|hrs|d|day|days|w|wk|wks)$/i.test(candidate) ||  // "44 mins", "2h", "3d", "2w"
+                    /^[A-Za-z]{3}\s+'?\d{2,4}$/i.test(candidate) ||                           // "Mar '25", "Jan 2025"
+                    /^[A-Za-z]{3}\s+\d{1,2}$/i.test(candidate) ||                             // "Feb 12"
+                    /^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test(candidate) ||                         // "3/15/25"
+                    /^\d{4}-\d{2}-\d{2}/.test(candidate);                                     // ISO
+                if (looksLikeTime) return { absolute: null, raw: candidate };
+            }
+
+            return { absolute: null, raw: "" };
         }
 
         function getCommentId(bubble) {
@@ -529,17 +558,44 @@ async function extractFullThread(page, postUrl, indexCard) {
             if (!postBody) postBody = (bodyEl.innerText || "").trim();
         }
 
-        // Post timestamp
-        var postTimeEl = document.querySelector('h1 ~ * time[datetime], [class*="PostHeader"] time[datetime], time[datetime]');
+        // Post timestamp — same multi-strategy approach as comment getTimestamp.
+        // On the post page Skool shows "AuthorName · Mar '25" in the post header.
         var postTs = { absolute: null, raw: "" };
-        if (postTimeEl) {
-            postTs.absolute = postTimeEl.getAttribute("datetime");
-            postTs.raw = postTimeEl.textContent.trim();
-        } else {
-            var rawTimeEl = document.querySelector('[class*="PostTime"], [class*="postTime"]');
-            if (rawTimeEl) {
-                postTs.raw = rawTimeEl.textContent.trim();
-                postTs.absolute = rawTimeEl.getAttribute("title") || rawTimeEl.getAttribute("aria-label") || null;
+        // a) <time datetime>
+        var postTimeEl = document.querySelector(
+            '[class*="PostHeader"] time[datetime], [class*="postHeader"] time[datetime], ' +
+            'header time[datetime], [class*="PostMeta"] time[datetime], time[datetime]'
+        );
+        if (postTimeEl && postTimeEl.getAttribute("datetime")) {
+            postTs = { absolute: postTimeEl.getAttribute("datetime"), raw: postTimeEl.textContent.trim() };
+        }
+        // b) dedicated time element
+        if (!postTs.raw) {
+            var ptEl = document.querySelector(
+                '[class*="PostTime"], [class*="postTime"], [class*="PostHeader"] [class*="Time"], ' +
+                '[class*="PostMeta"] [class*="Time"], [class*="PostHeader"] [class*="Age"]'
+            );
+            if (ptEl) {
+                postTs.raw = (ptEl.textContent || "").trim().replace(/^[·•\s]+/, "").trim();
+                postTs.absolute = ptEl.getAttribute("title") || ptEl.getAttribute("datetime") || null;
+            }
+        }
+        // c) · pattern from the post header area text
+        if (!postTs.raw) {
+            var headerArea = document.querySelector(
+                '[class*="PostHeader"], [class*="postHeader"], [class*="PostMeta"], header'
+            );
+            if (headerArea) {
+                var hLine = ((headerArea.innerText || "").split("\n")[0] || "").trim();
+                var hDot = hLine.match(/[·•]\s*(.{1,30})$/);
+                if (hDot) {
+                    var hCand = hDot[1].trim();
+                    var hLooks =
+                        /^\d+\s*(min|mins|m|h|hr|hrs|d|day|days|w|wk|wks)$/i.test(hCand) ||
+                        /^[A-Za-z]{3}\s+'?\d{2,4}$/i.test(hCand) ||
+                        /^[A-Za-z]{3}\s+\d{1,2}$/i.test(hCand);
+                    if (hLooks) postTs.raw = hCand;
+                }
             }
         }
 
@@ -600,6 +656,101 @@ async function extractFullThread(page, postUrl, indexCard) {
             threads: threads,
         };
     }, { targetSlug: CONFIG.targetSlug, targetDisplay: CONFIG.targetDisplay, postUrl: postUrl });
+}
+
+// ─── TIMESTAMP RESOLUTION (Node.js side) ─────────────────────────────────────
+//
+// The browser-side getTimestamp() returns {raw, absolute}. `absolute` is set
+// only when a machine-readable attribute existed. For the common case — where
+// Skool shows "Mar '25", "44 mins", "3d" etc. — we resolve `raw` here using
+// scrapedAt as the reference point, then write the result back to absolute.
+//
+// This is done in Node.js (not browser) so we get accurate Date math from
+// a single consistent clock.
+//
+var MONTHS_MAP = { jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,dec:11 };
+
+function resolveRawTimestamp(raw, scrapedAtIso) {
+    if (!raw) return null;
+    raw = raw.trim();
+
+    // Already an ISO string
+    if (/^\d{4}-\d{2}-\d{2}T/.test(raw)) {
+        var d0 = new Date(raw);
+        if (!isNaN(d0.getTime())) return d0.toISOString();
+    }
+
+    var base = new Date(scrapedAtIso);
+
+    // "44 mins" / "44 min" / "44m"  (minutes ago)
+    var mM = raw.match(/^(\d+)\s*(?:min|mins|m)$/i);
+    if (mM) return new Date(base.getTime() - parseInt(mM[1]) * 60000).toISOString();
+
+    // "2h" / "2 hrs" / "2 hours"
+    var hM = raw.match(/^(\d+)\s*h(?:rs?|ours?)?$/i);
+    if (hM) return new Date(base.getTime() - parseInt(hM[1]) * 3600000).toISOString();
+
+    // "3d" / "3 days"
+    var dM = raw.match(/^(\d+)\s*d(?:ays?)?$/i);
+    if (dM) return new Date(base.getTime() - parseInt(dM[1]) * 86400000).toISOString();
+
+    // "2w" / "2 weeks"
+    var wM = raw.match(/^(\d+)\s*w(?:ks?|eeks?)?$/i);
+    if (wM) return new Date(base.getTime() - parseInt(wM[1]) * 7 * 86400000).toISOString();
+
+    // "Mar '25" / "Jan '26"  → first of that month
+    var myM = raw.match(/^([A-Za-z]{3})\s+'(\d{2})$/);
+    if (myM) {
+        var mon = MONTHS_MAP[(myM[1] || "").toLowerCase()];
+        if (mon !== undefined) {
+            var yr = 2000 + parseInt(myM[2], 10);
+            return new Date(Date.UTC(yr, mon, 1)).toISOString();
+        }
+    }
+
+    // "Feb 12" / "Mar 5"  → infer year (never in the future vs scrapedAt)
+    var mdM = raw.match(/^([A-Za-z]{3})\s+(\d{1,2})$/);
+    if (mdM) {
+        var mon2 = MONTHS_MAP[(mdM[1] || "").toLowerCase()];
+        if (mon2 !== undefined) {
+            var day2 = parseInt(mdM[2], 10);
+            var yr2  = base.getUTCFullYear();
+            var cand = new Date(Date.UTC(yr2, mon2, day2));
+            // If candidate is more than 1 day in the future, use prior year
+            if (cand.getTime() > base.getTime() + 86400000) cand = new Date(Date.UTC(yr2 - 1, mon2, day2));
+            return cand.toISOString();
+        }
+    }
+
+    // Last resort — let Date parse it
+    var d2 = new Date(raw);
+    if (!isNaN(d2.getTime()) && d2.getFullYear() > 2000 && d2.getFullYear() < 2100) return d2.toISOString();
+
+    return null; // unparseable — stream builder uses derived fallback
+}
+
+/**
+ * Walk all comments/replies in a post result and fill in timestampAbsolute
+ * from timestampRaw wherever the browser returned null for absolute.
+ * Also resolves the post-level timestamp.
+ */
+function postProcessTimestamps(postData) {
+    var scrAt = postData.post.scrapedAt || new Date().toISOString();
+    var resolved = 0, failed = 0;
+
+    function resolve(obj) {
+        if (obj.timestampAbsolute) return; // already have it
+        var iso = resolveRawTimestamp(obj.timestampRaw || obj.timestampRaw, scrAt);
+        if (iso) { obj.timestampAbsolute = iso; resolved++; }
+        else      { failed++; }
+    }
+
+    resolve(postData.post);
+    postData.threads.forEach(function(th) {
+        resolve(th.comment);
+        th.replies.forEach(function(r) { resolve(r); });
+    });
+    return { resolved: resolved, failed: failed };
 }
 
 // Attach stable IDs for comments that lacked a permalink
@@ -832,6 +983,9 @@ async function main() {
                 }
                 await pg.close();
                 if (!result) return null;
+                // Resolve raw timestamps ("Mar '25", "44 mins", "3d" etc.) to ISO
+                var tsStats = postProcessTimestamps(result);
+                if (tsStats.resolved > 0) process.stdout.write("  ⏱ " + tsStats.resolved + " timestamps resolved");
                 backfillIds(result);
 
                 // verify Scott is actually involved (leak-through defense)

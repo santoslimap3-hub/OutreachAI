@@ -45,13 +45,42 @@ const fs = require("fs");
 const path = require("path");
 
 const ROOT = path.resolve(__dirname, "..");
-const DATA_DIR = path.join(ROOT, "data");
+const DATA_DIR        = path.join(ROOT, "data");
+const SCRAPER_OUT_DIR = path.join(ROOT, "scraper", "output");
 const PERSONS_FILE    = path.join(DATA_DIR, "persons.json");
 const COMPANY_FILE    = path.join(DATA_DIR, "company_members.json");
 const DM_CSV          = path.join(DATA_DIR, "dm-classified.csv");
-const V2_POSTS        = path.join(ROOT, "scraper", "output", "fresh_skool_data.json");
 const LEGACY_POSTS    = path.join(DATA_DIR, "posts_with_scott_reply_threads.json");
 const OUTPUT_FILE     = path.join(DATA_DIR, "person_streams.json");
+const OUTPUT_TMP      = OUTPUT_FILE + ".tmp"; // written first, then renamed (atomic)
+
+/**
+ * Find all scraper v2 output files in scraper/output/.
+ * A valid v2 file has a top-level "posts" array and a "metadata" object.
+ * This lets us merge Synthesizer + Self-Improvement-Nation (or any future
+ * community) automatically — just point the scraper at each community with
+ * a different OUTPUT_FILE name and they all get picked up here.
+ *
+ * The index file (posts_index_v2.json) is intentionally excluded (no "posts" key).
+ */
+function findAllV2PostFiles() {
+    if (!fs.existsSync(SCRAPER_OUT_DIR)) return [];
+    var files = fs.readdirSync(SCRAPER_OUT_DIR)
+        .filter(function(f) { return f.endsWith(".json") && !f.includes("index"); })
+        .map(function(f) { return path.join(SCRAPER_OUT_DIR, f); });
+
+    var valid = [];
+    files.forEach(function(fp) {
+        try {
+            // Peek only — read first 500 chars to check for the "posts" key
+            var peek = fs.readFileSync(fp, "utf8").substring(0, 500);
+            if (/"posts"\s*:/.test(peek) && /"metadata"\s*:/.test(peek)) {
+                valid.push(fp);
+            }
+        } catch (_) {}
+    });
+    return valid;
+}
 
 // ─── helpers ───────────────────────────────────────────────────────────────
 
@@ -277,9 +306,36 @@ function build() {
         commentEvents = 0,
         replyEvents = 0,
         tsDerived = 0;
-    var v2 = readJSON(V2_POSTS, null);
-    if (v2 && v2.posts) {
-        v2.posts.forEach(function(postData, postIdx) {
+
+    // ─── v2 scraper files (multi-community) ────────────────────────────────
+    // We scan the entire scraper/output/ directory for valid v2 files so
+    // Synthesizer + Self-Improvement-Nation + any future community are all
+    // included automatically. Name your scraper output files anything — as
+    // long as they have "posts" and "metadata" keys they will be loaded.
+    var v2Files = findAllV2PostFiles();
+    if (v2Files.length === 0) {
+        console.log("⚠  no v2 scraper output files found in scraper/output/ — post/comment events will be missing");
+        console.log("   Run: node scraper/scraper_v2.js  (for each community)");
+    } else {
+        console.log("  v2 scraper files found: " + v2Files.length);
+        v2Files.forEach(function(fp) { console.log("    " + path.basename(fp)); });
+    }
+
+    // Merge all v2 post arrays
+    var allV2Posts = [];
+    v2Files.forEach(function(fp) {
+        var v2 = readJSON(fp, null);
+        if (!v2 || !Array.isArray(v2.posts)) {
+            console.error("  ❌ skipping " + path.basename(fp) + " — not a valid v2 post file");
+            return;
+        }
+        console.log("  " + path.basename(fp) + ": " + v2.posts.length + " posts (community: " + (v2.metadata && v2.metadata.community || "?") + ")");
+        allV2Posts = allV2Posts.concat(v2.posts);
+    });
+    console.log("  total v2 posts to process: " + allV2Posts.length);
+
+    if (allV2Posts.length > 0) {
+        allV2Posts.forEach(function(postData, postIdx) {
             var post = postData.post;
             var postIso = parseIsoOrTitle(post.timestampAbsolute);
             if (!postIso) { postIso = post.scrapedAt || new Date().toISOString(); }
@@ -399,9 +455,7 @@ function build() {
                 }
             });
         });
-    } else {
-        console.log("⚠  no v2 posts file (fresh_skool_data.json) found");
-    }
+    } // end if allV2Posts.length > 0
 
     // ─── Fallback: legacy posts_with_scott_reply_threads.json (SIN data) ──
     // This file has no slugs and no absolute timestamps but has real content.
@@ -532,12 +586,16 @@ function build() {
         },
         streams: streams,
     };
-    fs.writeFileSync(OUTPUT_FILE, JSON.stringify(out, null, 2));
+    // Atomic write: write to .tmp then rename so a crash mid-write never
+    // leaves a corrupt OUTPUT_FILE (this was Bug 1 in the v7/v8 diagnosis).
+    var serialized = JSON.stringify(out, null, 2);
+    fs.writeFileSync(OUTPUT_TMP, serialized);
+    fs.renameSync(OUTPUT_TMP, OUTPUT_FILE);
     console.log("\n📊 streams summary");
     console.log("   persons:            " + out.counts.persons);
     console.log("   total events:       " + out.counts.totalEvents);
     console.log("   excluded streams:   " + out.counts.excludedStreams + " (company×company, not used for training)");
-    console.log("💾 wrote " + OUTPUT_FILE);
+    console.log("💾 wrote " + OUTPUT_FILE + " (atomic rename from .tmp — no partial-write risk)");
 }
 
 build();

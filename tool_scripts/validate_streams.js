@@ -125,8 +125,8 @@ function main() {
     Object.values(streams).forEach(function(s) {
         if (!s.person) return;
         var isCompany = s.person.role && s.person.role.indexOf("company-member") === 0;
-        var isScott   = s.person.id === "scott-northwolf";
-        if (isCompany && !isScott) {
+        var isCeo     = s.person.role === "company-member:ceo";
+        if (isCompany && !isCeo) {
             companyPairs++;
             if (!s.excludeFromTraining) {
                 console.error("❌ company-member stream NOT flagged excludeFromTraining: " + s.person.displayName);

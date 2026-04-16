@@ -1,12 +1,12 @@
 {
-  "generatedAt": "2026-04-16T02:46:30.067Z",
-  "examplesWritten": 2653,
+  "generatedAt": "2026-04-16T08:43:24.462Z",
+  "examplesWritten": 3155,
   "perChannel": {
     "dm": 2653,
-    "comment": 0,
-    "post": 0
+    "comment": 495,
+    "post": 7
   },
-  "droppedCompanyCompanyStreams": 0,
+  "droppedCompanyCompanyStreams": 1,
   "droppedEmptyAssistant": 0,
   "droppedMasculineToFemale": 0,
   "droppedOther": 0,
