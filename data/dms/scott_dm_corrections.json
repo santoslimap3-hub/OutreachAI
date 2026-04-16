@@ -108,7 +108,7 @@
   },
   {
     "correction_id": "0__Nirvana_is_Hamza_s_gym_Hisfan_make_sur",
-    "timestamp": "2026-04-16T06:43:39.918Z",
+    "timestamp": "2026-04-16T08:59:53.133Z",
     "lead_name": "Lead",
     "scott_reply": "Nirvana is Hamza's gym.\nHisfan, make sure to introduce yourself to the community here: https://www.skool.com/self-improvement-nation-3104/say-hello-to-the-gang-start-here\nCommunity call coming up, brother. Hope to see you there. It's gonna be epic: https://www.skool.com/self-improvement-nation-3104/inauguration-community-call",
     "last_10_messages": [
@@ -134,13 +134,12 @@
       }
     ],
     "previous_tags": {
-      "dm_stage": "",
+      "dm_stage": "nurture-free",
       "nonsales": false,
       "tone_tags": [
         "brotherhood",
         "direct",
-        "casual",
-        "teasing-future-value"
+        "mystery-teasing"
       ],
       "intent": "community-building",
       "sales_stage": "nurture"
@@ -151,8 +150,8 @@
       "tone_tags": [
         "brotherhood",
         "direct",
-        "casual",
-        "teasing-future-value"
+        "mystery-teasing",
+        "bonding-rapport"
       ],
       "intent": "community-building",
       "sales_stage": "nurture"
@@ -198,7 +197,7 @@
   },
   {
     "correction_id": "2__sure",
-    "timestamp": "2026-04-16T07:21:52.969Z",
+    "timestamp": "2026-04-16T09:22:04.094Z",
     "lead_name": "Lead",
     "scott_reply": "sure",
     "last_10_messages": [
@@ -229,7 +228,7 @@
       "tone_tags": [
         "casual"
       ],
-      "intent": "engagement-nurture",
+      "intent": "redirect",
       "sales_stage": "engagement"
     },
     "new_tags": {
@@ -238,13 +237,13 @@
       "tone_tags": [
         "casual"
       ],
-      "intent": "redirect",
+      "intent": "acknowledgement",
       "sales_stage": "engagement"
     }
   },
   {
     "correction_id": "3__WHAT_That_s_true_progress_brother_How",
-    "timestamp": "2026-04-16T07:23:00.960Z",
+    "timestamp": "2026-04-16T09:22:28.446Z",
     "lead_name": "Lead",
     "scott_reply": "WHAT?\nThat's true progress, brother! How?",
     "last_10_messages": [
@@ -274,21 +273,20 @@
       "nonsales": true,
       "tone_tags": [
         "brotherhood",
-        "gratitude",
-        "vulnerability",
-        "motivational"
+        "motivational",
+        "hype"
       ],
       "intent": "redirect",
-      "sales_stage": "engagement"
+      "sales_stage": "nurture"
     },
     "new_tags": {
       "dm_stage": null,
       "nonsales": true,
       "tone_tags": [
         "brotherhood",
-        "gratitude",
-        "vulnerability",
-        "motivational"
+        "motivational",
+        "hype",
+        "curiosity"
       ],
       "intent": "redirect",
       "sales_stage": "nurture"
