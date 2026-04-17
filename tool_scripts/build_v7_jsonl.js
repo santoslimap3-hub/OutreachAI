@@ -79,19 +79,18 @@ function personBlock(person) {
 
 // Format one event for inclusion in the HISTORY block
 function formatHistoryEvent(e, person) {
-    var dt = (e.ts || "").substring(0, 16).replace("T", " ");
     if (e.channel === "dm") {
         var who = e.speaker === "scott" ? "Scott" : (person.displayName || "Them");
-        return "[DM " + dt + "] " + who + ": " + escapeText(e.text);
+        return "[DM] " + who + ": " + escapeText(e.text);
     }
     if (e.channel === "post") {
-        return "[POST " + dt + "] " + (person.displayName || "Them") + " posted \"" + (e.postTitle || "") + "\":\n" + escapeText(e.text);
+        return "[POST] " + (person.displayName || "Them") + " posted \"" + (e.postTitle || "") + "\":\n" + escapeText(e.text);
     }
     if (e.channel === "comment") {
         var w = e.speaker === "scott" ? "Scott" : (person.displayName || "Them");
-        return "[COMMENT " + dt + " on \"" + (e.postTitle || "") + "\"] " + w + ": " + escapeText(e.text);
+        return "[COMMENT on \"" + (e.postTitle || "") + "\"] " + w + ": " + escapeText(e.text);
     }
-    return "[" + e.channel + " " + dt + "] " + escapeText(e.text);
+    return "[" + e.channel + "] " + escapeText(e.text);
 }
 
 /**

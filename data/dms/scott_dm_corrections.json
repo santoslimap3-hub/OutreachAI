@@ -639,7 +639,7 @@
       },
       {
         "role": "assistant",
-        "text": "Amazing, Jamie! I can't wait to see you on our next community call! It shall be EPIC!\nHey, Jamie, I'm doing one on one calls with all the members of the community to get to know each other better and start building something REAL and truly powerful here and it starts with commitment so I'm doing my part on it and I'd be thrilled to have a time to chat and get to share each other's journeys and experiences along the way. If you're down for it you can schedule a call with me here with this link: https://calendly.com/northwolfscott/meeting\nLet me know when you do so I can confirm back to you it landed on my calendar.\nHey, Jamie, how's it going, brother? How's business coming along?"
+        "text": "Amazing, Jamie! I can't wait to see you on our next community call! It shall be EPIC!\nHey, Jamie, I'm doing one on one calls with all the members of the community to get to know each other better and start building something REAL and truly powerful here and it starts with commitment so I'm doing my part on it and I'd be thrilled to have a time to chat and get to share each other's journeys and experiences along the way. If you're down for it you can schedule a call with me here with this link: ====calendly_link=====\nLet me know when you do so I can confirm back to you it landed on my calendar.\nHey, Jamie, how's it going, brother? How's business coming along?"
       },
       {
         "role": "user",
